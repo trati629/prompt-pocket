@@ -147,13 +147,13 @@
     </div>
 
     <div class="sticky-bar">
-      <button type="button" id="btn-copy-filled" class="btn-primary full-width">
-        <svg width="13" height="13" aria-hidden="true"><use href="#ic-copy"/></svg>
-        <span id="btn-copy-label">Copy prompt</span>
-      </button>
-      <button type="button" id="btn-send-filled" class="btn-ghost full-width">
+      <button type="button" id="btn-send-filled" class="btn-primary full-width">
         <svg width="12" height="12" aria-hidden="true"><use href="#ic-send"/></svg>
         Send to active tab
+      </button>
+      <button type="button" id="btn-copy-filled" class="btn-ghost full-width">
+        <svg width="13" height="13" aria-hidden="true"><use href="#ic-copy"/></svg>
+        <span id="btn-copy-label">Copy prompt</span>
       </button>
     </div>
   </div>
@@ -199,14 +199,26 @@
     <!-- Hidden tags field — backwards-compat with storage.js -->
     <input type="hidden" id="template-tags" value="" aria-hidden="true">
 
-    <div class="sticky-bar form-bar">
-      <button type="button" id="btn-delete-template" class="icon-btn danger hidden" aria-label="Delete template">
-        <svg width="16" height="16" aria-hidden="true"><use href="#ic-trash"/></svg>
-      </button>
-      <button type="button" id="btn-save-template" class="btn-primary flex-fill">
-        <svg width="14" height="14" aria-hidden="true"><use href="#ic-check"/></svg>
-        Save template
-      </button>
+    <div class="sticky-bar">
+      <div class="form-bar">
+        <button type="button" id="btn-send-from-edit" class="btn-primary flex-fill">
+          <svg width="12" height="12" aria-hidden="true"><use href="#ic-send"/></svg>
+          Send to active tab
+        </button>
+        <button type="button" id="btn-copy-from-edit" class="btn-ghost">
+          <svg width="13" height="13" aria-hidden="true"><use href="#ic-copy"/></svg>
+          Copy
+        </button>
+      </div>
+      <div class="form-bar">
+        <button type="button" id="btn-delete-template" class="icon-btn danger hidden" aria-label="Delete template">
+          <svg width="16" height="16" aria-hidden="true"><use href="#ic-trash"/></svg>
+        </button>
+        <button type="button" id="btn-save-template" class="btn-primary flex-fill">
+          <svg width="14" height="14" aria-hidden="true"><use href="#ic-check"/></svg>
+          Save template
+        </button>
+      </div>
     </div>
   </div>
 
@@ -503,6 +515,19 @@
         </ul>
       </div>
     </div>
+  </div>
+
+  <!-- Update notification bar (pinned to bottom, shown when a new GitHub release is available) -->
+  <div id="update-bar" class="update-bar hidden" role="status" aria-live="polite">
+    <span class="update-bar-text">
+      <svg width="11" height="11" aria-hidden="true"><use href="#ic-sparkle"/></svg>
+      <span id="update-bar-label">New version available</span>
+    </span>
+    <a id="update-bar-link" href="#" target="_blank" rel="noopener noreferrer"
+       class="update-bar-link">Release notes</a>
+    <button type="button" id="btn-dismiss-update" class="update-bar-dismiss" aria-label="Dismiss update notification">
+      <svg width="11" height="11" aria-hidden="true"><use href="#ic-x"/></svg>
+    </button>
   </div>
 
   <!-- Toast notification -->

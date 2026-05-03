@@ -132,7 +132,9 @@ async function init() {
 
   // Update about meta
   const aboutEl = document.getElementById('about-meta');
-  if (aboutEl) aboutEl.textContent = `v1.0.0 · ${allTemplates.length} template${allTemplates.length !== 1 ? 's' : ''}`;
+  if (aboutEl) aboutEl.textContent = `v${chrome.runtime.getManifest().version} · ${allTemplates.length} template${allTemplates.length !== 1 ? 's' : ''}`;
+
+  checkForUpdate();
 }
 
 // ── Rendering: template list ────────────────────────
@@ -185,7 +187,14 @@ function renderTemplates(templates) {
       if (e.target.closest('.template-edit-btn')) {
         openForm(tId);
       } else {
-        openUseView(tId);
+        const t = allTemplates.find(x => x.id === tId);
+        if (!t) return;
+        // Direct insert when no variables; open preview to fill them when there are
+        if (extractVars(t.body).length === 0) {
+          insertTextToHost(t.body);
+        } else {
+          openUseView(tId);
+        }
       }
     });
     listDelegated = true;
@@ -518,6 +527,19 @@ function updateDetectedVars(body) {
 
 document.getElementById('btn-new-template')?.addEventListener('click', () => openForm());
 document.getElementById('btn-cancel-form')?.addEventListener('click', () => switchView('view-main'));
+
+document.getElementById('btn-send-from-edit')?.addEventListener('click', () => {
+  const body = document.getElementById('template-body')?.value.trim();
+  if (!body) return;
+  insertTextToHost(body);
+});
+
+document.getElementById('btn-copy-from-edit')?.addEventListener('click', () => {
+  const body = document.getElementById('template-body')?.value.trim();
+  if (!body) return;
+  navigator.clipboard?.writeText(body).catch(() => {});
+  showToast('Copied to clipboard');
+});
 
 document.getElementById('btn-save-template')?.addEventListener('click', async () => {
   const title = document.getElementById('template-title')?.value.trim();
@@ -1385,6 +1407,89 @@ document.querySelectorAll('.help-tab').forEach(tab => {
     tab.classList.add('active');
     tab.setAttribute('aria-selected', 'true');
     document.getElementById(`help-content-${tab.dataset.tab}`)?.classList.remove('hidden');
+  });
+});
+
+// ── Update check ────────────────────────────────────
+const REPO          = 'trati629/prompt-pocket';
+const CHECK_INTERVAL = 6 * 60 * 60 * 1000; // 6 hours in ms — throttle per session
+
+function parseVersion(tag) {
+  return String(tag).replace(/^v/, '').trim();
+}
+
+function isNewer(latest, current) {
+  const toNums = v => v.split('.').map(n => parseInt(n, 10) || 0);
+  const [la, lb, lc] = toNums(latest);
+  const [ca, cb, cc] = toNums(current);
+  if (la !== ca) return la > ca;
+  if (lb !== cb) return lb > cb;
+  return lc > cc;
+}
+
+async function checkForUpdate() {
+  try {
+    const current = chrome.runtime.getManifest().version;
+
+    // Read cached result — skip fetch if checked recently
+    const stored = await new Promise(resolve =>
+      chrome.storage.local.get(['update_check'], d => resolve(d.update_check || {}))
+    );
+
+    const age = Date.now() - (stored.checked_at || 0);
+    if (age < CHECK_INTERVAL && stored.checked_at) {
+      // Use cached result without hitting the network
+      if (stored.latest && isNewer(stored.latest, current) && !stored.dismissed) {
+        showUpdateBar(stored.latest, stored.url);
+      }
+      return;
+    }
+
+    // Fetch latest release from GitHub
+    const res = await fetch(
+      `https://api.github.com/repos/${REPO}/releases/latest`,
+      { headers: { Accept: 'application/vnd.github+json' } }
+    );
+    if (!res.ok) return; // silently skip if API unavailable
+
+    const data = await res.json();
+    const latest = parseVersion(data.tag_name || '');
+    const url    = data.html_url || `https://github.com/${REPO}/releases/latest`;
+
+    chrome.storage.local.set({
+      update_check: { latest, url, checked_at: Date.now(), dismissed: false }
+    });
+
+    if (latest && isNewer(latest, current)) {
+      showUpdateBar(latest, url);
+    }
+  } catch {
+    // Network unavailable or API error — fail silently
+  }
+}
+
+function showUpdateBar(version, url) {
+  const bar   = document.getElementById('update-bar');
+  const label = document.getElementById('update-bar-label');
+  const link  = document.getElementById('update-bar-link');
+  if (!bar || !label || !link) return;
+
+  label.textContent = `v${version} available`;
+  link.href = url;
+  bar.classList.remove('hidden');
+  document.body.classList.add('has-update');
+}
+
+document.getElementById('btn-dismiss-update')?.addEventListener('click', () => {
+  document.getElementById('update-bar')?.classList.add('hidden');
+  document.body.classList.remove('has-update');
+  // Mark dismissed so it doesn't re-appear this session for the same version
+  chrome.storage.local.get(['update_check'], d => {
+    if (d.update_check) {
+      chrome.storage.local.set({
+        update_check: { ...d.update_check, dismissed: true }
+      });
+    }
   });
 });
 

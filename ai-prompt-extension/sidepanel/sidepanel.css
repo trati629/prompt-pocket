@@ -165,7 +165,7 @@ input, textarea, select { font-family: var(--font-body); }
   gap: 0;
 }
 .form-scroll {
-  padding: 4px 16px 180px;
+  padding: 4px 16px 230px;
   gap: 18px;
 }
 .settings-scroll {
@@ -909,6 +909,58 @@ input, textarea, select { font-family: var(--font-body); }
   z-index: 50;
   pointer-events: none;
 }
+
+/* ── Update notification bar ─────────────────────── */
+.update-bar {
+  position: fixed;
+  bottom: 0; left: 0; right: 0;
+  z-index: 30;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 12px;
+  background: var(--surface);
+  border-top: 1px solid rgba(196,169,116,0.35);
+  font-size: 11px;
+  color: var(--text-mute);
+}
+.update-bar-text {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  flex: 1;
+  color: var(--text-mute);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.update-bar-text svg { color: var(--accent); flex-shrink: 0; }
+.update-bar-link {
+  color: var(--accent);
+  font-size: 11px;
+  font-weight: 600;
+  text-decoration: none;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.update-bar-link:hover { text-decoration: underline; }
+.update-bar-dismiss {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: var(--text-mute);
+  padding: 2px;
+  display: inline-flex;
+  cursor: pointer;
+  flex-shrink: 0;
+  border-radius: 3px;
+  transition: color 0.12s;
+}
+.update-bar-dismiss:hover { color: var(--text); }
+
+/* Push sticky bars up when the update bar is visible */
+body.has-update .sticky-bar { bottom: 28px; }
 
 /* ── Import section (Settings) ────────────────────── */
 .section-label-row {

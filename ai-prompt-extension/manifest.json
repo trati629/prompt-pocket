@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Universal AI Prompt Templates",
-  "version": "1.0.0",
+  "version": "0.0.1",
   "description": "Insert, manage and import prompt templates across supported AI web apps",
   "permissions": [
     "sidePanel",
@@ -13,7 +13,8 @@
   "host_permissions": [
     "https://chatgpt.com/*",
     "https://chat.openai.com/*",
-    "https://copilot.microsoft.com/*"
+    "https://copilot.microsoft.com/*",
+    "https://api.github.com/*"
   ],
   "side_panel": {
     "default_path": "sidepanel/dormant.html"
