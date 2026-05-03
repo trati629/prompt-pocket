@@ -1,0 +1,513 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Prompt Pocket</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="sidepanel.css">
+
+  <!-- SVG icon sprite (hidden via CSS class .icon-sprite) -->
+  <svg class="icon-sprite" xmlns="http://www.w3.org/2000/svg">
+    <symbol id="ic-search" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/>
+    </symbol>
+    <symbol id="ic-gear" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="12" cy="12" r="3"/>
+      <path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1Z"/>
+    </symbol>
+    <symbol id="ic-pencil" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5Z"/>
+    </symbol>
+    <symbol id="ic-plus" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+      <path d="M12 5v14M5 12h14"/>
+    </symbol>
+    <symbol id="ic-back" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="m15 18-6-6 6-6"/>
+    </symbol>
+    <symbol id="ic-copy" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+      <rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+    </symbol>
+    <symbol id="ic-send" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M22 2 11 13"/><path d="M22 2 15 22l-4-9-9-4 20-7Z"/>
+    </symbol>
+    <symbol id="ic-trash" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+    </symbol>
+    <symbol id="ic-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M20 6 9 17l-5-5"/>
+    </symbol>
+    <symbol id="ic-x" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+      <path d="M18 6 6 18M6 6l12 12"/>
+    </symbol>
+    <symbol id="ic-pin" viewBox="0 0 24 24" fill="currentColor">
+      <path d="M9 10.76V5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v5.76a2 2 0 0 0 .59 1.41l1 1A2 2 0 0 1 17 14.59V16a1 1 0 0 1-1 1h-3v5h-2v-5H8a1 1 0 0 1-1-1v-1.41a2 2 0 0 1 .41-1.42l1-1A2 2 0 0 0 9 10.76Z"/>
+    </symbol>
+    <symbol id="ic-sparkle" viewBox="0 0 24 24" fill="currentColor">
+      <path d="M12 2 13.5 8.5 20 10l-6.5 1.5L12 18l-1.5-6.5L4 10l6.5-1.5L12 2z"/>
+      <path d="M19 14l.7 2.3L22 17l-2.3.7L19 20l-.7-2.3L16 17l2.3-.7L19 14z" opacity=".6"/>
+    </symbol>
+    <symbol id="ic-download" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M7 10l5 5 5-5"/><path d="M12 15V3"/>
+    </symbol>
+    <symbol id="ic-upload" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M17 8l-5-5-5 5"/><path d="M12 3v12"/>
+    </symbol>
+    <symbol id="ic-help" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><path d="M12 17h.01"/>
+    </symbol>
+    <symbol id="ic-alert" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+    </symbol>
+  </svg>
+</head>
+<body>
+
+  <!-- Selector health banner -->
+  <div id="health-banner" class="banner" role="alert"></div>
+
+  <!-- ── View: Main list ────────────────────────────── -->
+  <div id="view-main" class="view active">
+    <header class="pp-header">
+      <div class="brandmark" aria-label="Prompt Pocket">
+        <svg class="pocket-logo" width="20" height="20" viewBox="0 0 32 32" fill="none" aria-hidden="true">
+          <path d="M5 6 L5 18 Q5 26 16 27 Q27 26 27 18 L27 6"
+                stroke="currentColor" stroke-width="1.6" stroke-linecap="round"
+                stroke-dasharray="3 2.2"/>
+        </svg>
+        <span class="brandmark-text">P.PKT</span>
+      </div>
+      <button type="button" id="btn-settings" class="icon-btn" aria-label="Settings">
+        <svg width="18" height="18" aria-hidden="true"><use href="#ic-gear"/></svg>
+      </button>
+    </header>
+
+    <div class="search-wrap">
+      <div class="search-bar" id="search-bar">
+        <svg width="15" height="15" class="search-icon" aria-hidden="true"><use href="#ic-search"/></svg>
+        <label for="search-input" class="sr-only">Search templates</label>
+        <input type="search" id="search-input" placeholder="Search templates…" autocomplete="off">
+        <button type="button" id="btn-search-clear" class="search-clear hidden" aria-label="Clear search">
+          <svg width="13" height="13" aria-hidden="true"><use href="#ic-x"/></svg>
+        </button>
+      </div>
+    </div>
+
+    <div class="tabs-bar" role="tablist">
+      <button type="button" class="tab active" data-tab="my" id="tab-my" role="tab" aria-selected="true">
+        My Templates <span class="tab-count" id="tab-count-my"></span>
+      </button>
+      <button type="button" class="tab" data-tab="libs" id="tab-libs" role="tab" aria-selected="false" disabled title="Coming in Phase 5">
+        Libraries
+      </button>
+    </div>
+
+    <div id="template-list" class="scroll-area" role="list"></div>
+
+    <div class="fab-wrap">
+      <button type="button" id="btn-new-template" class="fab-btn">
+        <svg width="15" height="15" aria-hidden="true"><use href="#ic-plus"/></svg>
+        New Template
+      </button>
+    </div>
+  </div>
+
+  <!-- ── View: Use Template (fill + send) ──────────── -->
+  <div id="view-use" class="view hidden">
+    <header class="pp-header">
+      <button type="button" id="btn-back-use" class="icon-btn back-btn" aria-label="Back to templates">
+        <svg width="20" height="20" aria-hidden="true"><use href="#ic-back"/></svg>
+      </button>
+      <h1 id="use-title" class="screen-title"></h1>
+      <button type="button" id="btn-edit-use" class="icon-btn" aria-label="Edit template">
+        <svg width="15" height="15" aria-hidden="true"><use href="#ic-pencil"/></svg>
+      </button>
+    </header>
+
+    <div class="use-meta">
+      <span id="use-category-badge" class="cat-badge"></span>
+      <span id="use-uses" class="meta-uses"></span>
+    </div>
+
+    <div class="scroll-area use-scroll">
+      <div id="use-vars-section" class="section hidden">
+        <div class="section-label" id="vars-label">Variables</div>
+        <div id="use-vars-list" class="vars-list" aria-labelledby="vars-label"></div>
+      </div>
+
+      <div class="section">
+        <div class="section-label-row">
+          <span class="section-label" id="preview-label">Preview</span>
+          <span id="use-char-count" class="char-count" aria-live="polite"></span>
+        </div>
+        <div id="use-preview" class="preview-block" aria-labelledby="preview-label"></div>
+      </div>
+    </div>
+
+    <div class="sticky-bar">
+      <button type="button" id="btn-copy-filled" class="btn-primary full-width">
+        <svg width="13" height="13" aria-hidden="true"><use href="#ic-copy"/></svg>
+        <span id="btn-copy-label">Copy prompt</span>
+      </button>
+      <button type="button" id="btn-send-filled" class="btn-ghost full-width">
+        <svg width="12" height="12" aria-hidden="true"><use href="#ic-send"/></svg>
+        Send to active tab
+      </button>
+    </div>
+  </div>
+
+  <!-- ── View: Edit / New Template ─────────────────── -->
+  <div id="view-form" class="view hidden">
+    <header class="pp-header">
+      <button type="button" id="btn-cancel-form" class="icon-btn back-btn" aria-label="Back">
+        <svg width="20" height="20" aria-hidden="true"><use href="#ic-back"/></svg>
+      </button>
+      <h1 id="form-title" class="screen-title">New Template</h1>
+    </header>
+
+    <div class="scroll-area form-scroll">
+      <div class="field-group">
+        <label class="field-label" for="template-title">Title</label>
+        <input type="text" id="template-title" class="field-input"
+               placeholder="Name this template" autocomplete="off">
+      </div>
+
+      <div class="field-group">
+        <div class="field-label" id="category-label">Category</div>
+        <input type="hidden" id="template-category" value="general" aria-hidden="true">
+        <div id="category-chips" class="chip-grid" role="group" aria-labelledby="category-label"></div>
+      </div>
+
+      <div class="field-group">
+        <div class="field-label-row">
+          <label class="field-label" for="template-body">Prompt</label>
+          <span class="field-hint">Use <code>{{name}}</code> for variables</span>
+        </div>
+        <textarea id="template-body" class="field-textarea mono"
+                  rows="9"
+                  placeholder="Write your prompt here.&#10;Use {{topic}} for things you'll fill in each time."></textarea>
+      </div>
+
+      <div id="detected-vars-section" class="field-group hidden">
+        <div class="field-label" id="detected-label">Detected variables</div>
+        <div id="detected-vars-list" class="var-chips" aria-labelledby="detected-label"></div>
+      </div>
+    </div>
+
+    <!-- Hidden tags field — backwards-compat with storage.js -->
+    <input type="hidden" id="template-tags" value="" aria-hidden="true">
+
+    <div class="sticky-bar form-bar">
+      <button type="button" id="btn-delete-template" class="icon-btn danger hidden" aria-label="Delete template">
+        <svg width="16" height="16" aria-hidden="true"><use href="#ic-trash"/></svg>
+      </button>
+      <button type="button" id="btn-save-template" class="btn-primary flex-fill">
+        <svg width="14" height="14" aria-hidden="true"><use href="#ic-check"/></svg>
+        Save template
+      </button>
+    </div>
+  </div>
+
+  <!-- ── View: Settings ────────────────────────────── -->
+  <div id="view-settings" class="view hidden">
+    <header class="pp-header">
+      <button type="button" id="btn-close-settings" class="icon-btn back-btn" aria-label="Back">
+        <svg width="20" height="20" aria-hidden="true"><use href="#ic-back"/></svg>
+      </button>
+      <h1 class="screen-title">Settings</h1>
+    </header>
+
+    <div class="scroll-area settings-scroll">
+      <div class="settings-section">
+        <div class="section-label" id="label-appearance">Appearance</div>
+        <div id="theme-options" role="group" aria-labelledby="label-appearance"></div>
+      </div>
+
+      <div class="settings-section">
+        <div class="section-label" id="label-density">Card density</div>
+        <div class="density-options" id="density-options" role="group" aria-labelledby="label-density"></div>
+      </div>
+
+      <div class="settings-section">
+        <div class="section-label">Behavior</div>
+        <div class="settings-group">
+          <div class="setting-row divider">
+            <label class="setting-info" for="setting-badges">
+              <div class="setting-name">Show category badges</div>
+              <div class="setting-hint">In the templates list</div>
+            </label>
+            <label class="switch">
+              <input type="checkbox" id="setting-badges" checked>
+              <span class="switch-track" aria-hidden="true"></span>
+            </label>
+          </div>
+          <div class="setting-row divider">
+            <label class="setting-info" for="setting-inline">
+              <div class="setting-name">Inline overlay icon</div>
+              <div class="setting-hint">Floating icon beside AI input (Phase 4)</div>
+            </label>
+            <label class="switch">
+              <input type="checkbox" id="setting-inline">
+              <span class="switch-track" aria-hidden="true"></span>
+            </label>
+          </div>
+          <div class="setting-row">
+            <label class="setting-info" for="setting-category">
+              <div class="setting-name">Default category</div>
+            </label>
+            <input type="text" id="setting-category" class="setting-inline-input"
+                   aria-label="Default category" placeholder="General" value="General">
+          </div>
+        </div>
+      </div>
+
+      <!-- ── Import Prompts ─────────────────────────── -->
+      <div class="settings-section">
+        <div class="section-label-row">
+          <span class="section-label" id="label-import">Import Prompts</span>
+          <button type="button" id="btn-import-help" class="btn-ghost-sm" aria-label="View format help">
+            <svg width="11" height="11" aria-hidden="true"><use href="#ic-help"/></svg>
+            Help
+          </button>
+        </div>
+        <p class="backup-hint">Import from a CSV or JSON file. Required fields: title + body.</p>
+        <input type="file" id="file-bulk-import" accept=".json,.csv" class="js-hidden" aria-hidden="true">
+        <button type="button" id="btn-bulk-import" class="btn-ghost full-width btn-centered">
+          <svg width="14" height="14" aria-hidden="true"><use href="#ic-upload"/></svg>
+          Choose File (JSON or CSV)
+        </button>
+      </div>
+
+      <div class="about-card">
+        <svg class="pocket-logo about-logo" width="32" height="32" viewBox="0 0 32 32" fill="none" aria-hidden="true">
+          <path d="M5 6 L5 18 Q5 26 16 27 Q27 26 27 18 L27 6"
+                stroke="currentColor" stroke-width="1.4" stroke-linecap="round"
+                stroke-dasharray="3 2.2"/>
+        </svg>
+        <div class="about-info">
+          <div class="about-name">Prompt Pocket</div>
+          <div class="about-version" id="about-meta">v1.0.0</div>
+        </div>
+        <button type="button" id="btn-open-backup" class="btn-ghost-sm">
+          <svg width="10" height="10" aria-hidden="true"><use href="#ic-download"/></svg>
+          Backup
+        </button>
+      </div>
+
+      <!-- Hidden legacy select — JS reads this for theme_override compat -->
+      <select id="setting-theme" class="js-hidden" aria-hidden="true" tabindex="-1">
+        <option value="navy">Navy</option>
+        <option value="ink">Ink</option>
+        <option value="parchment">Light</option>
+        <option value="follow">Follow AI Host</option>
+      </select>
+    </div>
+  </div>
+
+  <!-- ── View: Backup & Restore ─────────────────────── -->
+  <div id="view-backup" class="view hidden">
+    <header class="pp-header">
+      <button type="button" id="btn-close-backup" class="icon-btn back-btn" aria-label="Back">
+        <svg width="20" height="20" aria-hidden="true"><use href="#ic-back"/></svg>
+      </button>
+      <h1 class="screen-title">Backup & Restore</h1>
+    </header>
+
+    <div class="scroll-area settings-scroll">
+      <div class="settings-section">
+        <div class="section-label">Manual backup</div>
+        <div class="settings-group">
+          <div class="setting-row divider">
+            <div class="setting-info">
+              <div class="setting-name">Export templates</div>
+              <div class="setting-hint">Save as .json file</div>
+            </div>
+            <button type="button" id="btn-export-templates" class="btn-ghost-sm">
+              <svg width="10" height="10" aria-hidden="true"><use href="#ic-download"/></svg>
+              Export
+            </button>
+          </div>
+          <div class="setting-row setting-row-col">
+            <div class="setting-info">
+              <div class="setting-name">Import / Restore</div>
+              <div class="setting-hint">Merge templates from a .json backup</div>
+            </div>
+            <input type="file" id="file-import" accept=".json" class="js-hidden" aria-hidden="true">
+            <button type="button" id="btn-import-templates" class="btn-ghost full-width btn-centered">
+              Import templates
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div class="settings-section">
+        <div class="section-label">Auto-backups</div>
+        <p class="backup-hint">The last 3 snapshots are saved automatically before each change.</p>
+        <div id="auto-backups-list" class="backups-list"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── View: Import Review ─────────────────────────── -->
+  <div id="view-import-review" class="view hidden">
+    <header class="pp-header">
+      <button type="button" id="btn-back-import" class="icon-btn back-btn" aria-label="Back to settings">
+        <svg width="20" height="20" aria-hidden="true"><use href="#ic-back"/></svg>
+      </button>
+      <h1 class="screen-title">Review Import</h1>
+    </header>
+
+    <div class="import-summary-bar" role="status" aria-live="polite">
+      <span id="import-valid-count" class="import-count-valid"></span>
+      <span id="import-invalid-count" class="import-count-invalid hidden"></span>
+    </div>
+
+    <div class="scroll-area review-scroll">
+      <div class="settings-section">
+        <div class="section-label" id="import-cat-label">Apply to all (fills gaps only)</div>
+        <div class="import-defaults-panel">
+          <div class="field-group">
+            <div class="field-label" id="import-cat-chips-label">Default category</div>
+            <input type="hidden" id="import-default-category" value="" aria-hidden="true">
+            <div id="import-category-chips" class="chip-grid" role="group" aria-labelledby="import-cat-chips-label"></div>
+            <p class="import-cat-hint">Leave unselected to keep each prompt's own value.</p>
+          </div>
+          <div class="field-group">
+            <label class="field-label" for="import-default-tags">Default tags</label>
+            <input type="text" id="import-default-tags" class="field-input"
+                   placeholder="tag1, tag2  (optional, applied where missing)">
+          </div>
+        </div>
+      </div>
+
+      <div id="import-valid-section" class="settings-section">
+        <div class="section-label" id="import-valid-heading">Valid rows</div>
+        <div id="import-valid-list" class="import-row-list" role="list"></div>
+      </div>
+
+      <div id="import-invalid-section" class="settings-section hidden">
+        <div class="section-label-row">
+          <span class="section-label import-label-invalid">Invalid rows</span>
+          <span id="import-invalid-badge" class="import-invalid-badge" aria-hidden="true"></span>
+        </div>
+        <p class="backup-hint">These rows are missing required fields and will be skipped.</p>
+        <div id="import-invalid-list" class="import-row-list" role="list"></div>
+      </div>
+    </div>
+
+    <div class="sticky-bar form-bar">
+      <button type="button" id="btn-cancel-import" class="btn-ghost">Cancel</button>
+      <button type="button" id="btn-confirm-import" class="btn-primary flex-fill">
+        <svg width="14" height="14" aria-hidden="true"><use href="#ic-check"/></svg>
+        <span id="btn-confirm-import-label">Import 0</span>
+      </button>
+    </div>
+  </div>
+
+  <!-- ── Conflict modal ────────────────────────────── -->
+  <div id="conflict-modal" class="modal-overlay hidden" role="dialog" aria-modal="true"
+       aria-labelledby="conflict-modal-title">
+    <div class="modal" role="document">
+      <div class="modal-header">
+        <h2 id="conflict-modal-title" class="modal-title">Title already exists</h2>
+        <p id="conflict-remaining" class="modal-subtitle"></p>
+      </div>
+
+      <div class="conflict-grid">
+        <div class="conflict-card">
+          <div class="conflict-card-label conflict-label-existing">Existing</div>
+          <div class="conflict-card-title" id="conflict-existing-title"></div>
+          <div class="conflict-card-body" id="conflict-existing-body"></div>
+          <div class="conflict-card-meta">
+            <span id="conflict-existing-cat" class="cat-badge"></span>
+            <div id="conflict-existing-tags" class="conflict-tags"></div>
+          </div>
+        </div>
+        <div class="conflict-card">
+          <div class="conflict-card-label conflict-label-incoming">Incoming</div>
+          <div class="conflict-card-title" id="conflict-incoming-title"></div>
+          <div class="conflict-card-body" id="conflict-incoming-body"></div>
+          <div class="conflict-card-meta">
+            <span id="conflict-incoming-cat" class="cat-badge"></span>
+            <div id="conflict-incoming-tags" class="conflict-tags"></div>
+          </div>
+        </div>
+      </div>
+
+      <label class="conflict-apply-all">
+        <input type="checkbox" id="conflict-apply-all">
+        <span>Apply this choice to all remaining conflicts</span>
+      </label>
+
+      <div class="modal-actions">
+        <button type="button" id="btn-conflict-skip" class="btn-ghost">Skip</button>
+        <button type="button" id="btn-conflict-overwrite" class="btn-ghost">Overwrite</button>
+        <button type="button" id="btn-conflict-keep" class="btn-primary">Keep Both</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Help dialog ───────────────────────────────── -->
+  <div id="help-dialog" class="modal-overlay hidden" role="dialog" aria-modal="true"
+       aria-labelledby="help-dialog-title">
+    <div class="modal help-modal" role="document">
+      <div class="modal-header help-modal-header">
+        <h2 id="help-dialog-title" class="modal-title">Import Format Guide</h2>
+        <button type="button" id="btn-close-help" class="icon-btn" aria-label="Close help">
+          <svg width="16" height="16" aria-hidden="true"><use href="#ic-x"/></svg>
+        </button>
+      </div>
+
+      <div class="help-tabs" role="tablist" aria-label="Format tabs">
+        <button type="button" class="help-tab active" data-tab="json"
+                role="tab" aria-selected="true" id="help-tab-json">JSON</button>
+        <button type="button" class="help-tab" data-tab="csv"
+                role="tab" aria-selected="false" id="help-tab-csv">CSV</button>
+      </div>
+
+      <div id="help-content-json" class="help-content" role="tabpanel" aria-labelledby="help-tab-json">
+        <pre class="help-code" aria-label="JSON example">[
+  {
+    "title":    "My Template",
+    "body":     "Explain {{topic}} simply.",
+    "category": "general",
+    "tags":     ["explain", "simple"]
+  }
+]</pre>
+        <div class="help-aliases">
+          <div class="section-label help-aliases-label">Field aliases</div>
+          <div class="alias-grid" role="list">
+            <span class="alias-canonical" role="listitem">title</span>
+            <span class="alias-accepted">also accepted: name</span>
+            <span class="alias-canonical" role="listitem">body</span>
+            <span class="alias-accepted">also accepted: prompt, content, text</span>
+            <span class="alias-canonical" role="listitem">category</span>
+            <span class="alias-accepted">also accepted: cat, type</span>
+            <span class="alias-canonical" role="listitem">tags</span>
+            <span class="alias-accepted">also accepted: tag, labels, keywords</span>
+          </div>
+        </div>
+      </div>
+
+      <div id="help-content-csv" class="help-content hidden" role="tabpanel" aria-labelledby="help-tab-csv">
+        <pre class="help-code" aria-label="CSV example">title,body,category,tags
+"Code Review","Review {{language}} code.","developer","review,code"
+"Quick Summary","Summarise {{text}}.","general",""</pre>
+        <ul class="help-notes">
+          <li>Header row required (case-insensitive, aliases accepted)</li>
+          <li>Wrap values containing commas in double quotes</li>
+          <li><code>tags</code> cell: comma-separated values inside quotes</li>
+          <li>File encoding: UTF-8</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast notification -->
+  <div id="toast" class="toast hidden" role="status" aria-live="polite"></div>
+
+  <script type="module" src="sidepanel.js"></script>
+</body>
+</html>

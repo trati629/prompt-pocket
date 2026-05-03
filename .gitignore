@@ -1,0 +1,40 @@
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# IDE and Editor files
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+*.code-workspace
+*.code-search
+
+# AI Assistant Folders
+.claude/
+.cursor/
+.aider/
+
+# Extension testing & backups
+prompt-pocket-backup-*.json
+*.bak
+*.tmp
+*.log
+
+# Node (just in case you add npm tools later)
+node_modules/
+npm-debug.log
+yarn-error.log
+
+# Stitch Snapshots (Uncomment the line below if you DO NOT want to track your design drafts)
+stitch_snapshot/
+test/
+HTMLTestframe/

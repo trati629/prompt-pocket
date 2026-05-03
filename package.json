@@ -1,0 +1,13 @@
+{
+  "name": "aiprompthelper",
+  "version": "1.0.0",
+  "description": "Universal AI Prompt Templates Chrome Extension",
+  "scripts": {
+    "test": "node --test test/*.test.mjs",
+    "test:selectors": "node --test test/selectors.test.mjs",
+    "test:theme": "node --test test/theme.test.mjs",
+    "test:host": "node --test test/host-detection.test.mjs",
+    "test:banner": "node --test test/banner.test.mjs"
+  },
+  "license": "ISC"
+}

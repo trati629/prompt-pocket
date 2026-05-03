@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Prompt Pocket</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="sidepanel.css">
+  <style>
+    .dormant-wrap {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 100vh;
+      padding: 32px 24px;
+      text-align: center;
+      gap: 0;
+    }
+    .dormant-logo {
+      color: var(--accent);
+      opacity: 0.6;
+      margin-bottom: 20px;
+    }
+    .dormant-title {
+      font-family: var(--font-head);
+      font-size: 20px;
+      font-weight: 700;
+      letter-spacing: -0.015em;
+      color: var(--text);
+      margin-bottom: 8px;
+    }
+    .dormant-hint {
+      font-size: 12.5px;
+      color: var(--text-dim);
+      line-height: 1.5;
+      max-width: 240px;
+      margin-bottom: 28px;
+    }
+    .dormant-actions {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      width: 100%;
+      max-width: 280px;
+      margin-bottom: 24px;
+    }
+    .dormant-divider {
+      width: 100%;
+      max-width: 280px;
+      border: 0;
+      border-top: 1px solid var(--border-soft);
+      margin-bottom: 16px;
+    }
+    .dormant-secondary {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      width: 100%;
+      max-width: 280px;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- SVG icon sprite (hidden via .icon-sprite in sidepanel.css) -->
+  <svg class="icon-sprite">
+    <symbol id="ic-pencil" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5Z"/>
+    </symbol>
+    <symbol id="ic-gear" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="12" cy="12" r="3"/>
+      <path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1Z"/>
+    </symbol>
+  </svg>
+
+  <div class="dormant-wrap">
+    <!-- P.PKT pocket logo -->
+    <svg class="dormant-logo" width="64" height="64" viewBox="0 0 32 32" fill="none" aria-hidden="true">
+      <path d="M5 6 L5 18 Q5 26 16 27 Q27 26 27 18 L27 6"
+            stroke="currentColor" stroke-width="1.4" stroke-linecap="round"
+            stroke-dasharray="3 2.2"/>
+    </svg>
+
+    <div class="dormant-title">Not on a supported AI</div>
+    <p class="dormant-hint">Open ChatGPT or Copilot to start using your prompt templates.</p>
+
+    <div class="dormant-actions">
+      <button type="button" id="btn-open-chatgpt" class="btn-primary full-width">
+        Open ChatGPT
+      </button>
+      <button type="button" id="btn-open-copilot" class="btn-ghost full-width btn-centered">
+        Open Copilot
+      </button>
+    </div>
+
+    <hr class="dormant-divider" aria-hidden="true">
+
+    <div class="dormant-secondary">
+      <button type="button" id="btn-manage-templates" class="btn-ghost full-width btn-centered">
+        <svg width="14" height="14" aria-hidden="true"><use href="#ic-pencil"/></svg>
+        Manage Templates
+      </button>
+      <button type="button" id="btn-settings-dormant" class="btn-ghost full-width btn-centered">
+        <svg width="14" height="14" aria-hidden="true"><use href="#ic-gear"/></svg>
+        Settings
+      </button>
+    </div>
+  </div>
+
+  <script type="module" src="sidepanel.js"></script>
+</body>
+</html>
