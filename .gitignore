@@ -23,6 +23,9 @@ Thumbs.db
 .cursor/
 .aider/
 
+# Dev tools (not part of the extension)
+generate-icons.html
+
 # Extension testing & backups
 prompt-pocket-backup-*.json
 *.bak
