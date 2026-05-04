@@ -1,55 +1,34 @@
 /**
- * Universal AI Prompt Templates
- * sidepanel/storage.js
- * 
- * Abstraction layer for Chrome Storage. Handles CRUD operations for templates,
- * sync vs local fallback, and maintains auto-backups.
+ * Prompt Pocket — sidepanel/storage.js
+ *
+ * Chrome Storage abstraction for templates, libraries, settings and auto-backups.
+ *
+ * Schema versions:
+ *   v1 — original (title, body, category, tags, source, created_at, modified_at)
+ *   v2 — adds library_id (null = My Templates) and favorited (bool, library templates only)
  */
 
-const SYNC_KEY = 'user_templates';
-const LOCAL_FALLBACK_KEY = 'user_templates_local';
-const AUTO_BACKUPS_KEY = 'auto_backups';
-const INIT_MARKER_KEY = 'has_initialized_defaults';
+const SYNC_KEY          = 'user_templates';
+const LOCAL_FALLBACK    = 'user_templates_local';
+const LIBRARIES_KEY     = 'user_libraries';
+const AUTO_BACKUPS_KEY  = 'auto_backups';
+const INIT_MARKER_KEY   = 'has_initialized_defaults';
+const CURRENT_SCHEMA    = 2;
 
-// Helper to generate a simple UUID
-function generateUUID() {
-  return crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substring(2, 15);
+function generateId() {
+  return crypto.randomUUID
+    ? crypto.randomUUID()
+    : Math.random().toString(36).substring(2, 15) + Date.now().toString(36);
 }
 
-/**
- * Initializes the database. If this is the first run, it loads defaults.json.
- */
-export async function initializeStorage() {
-  const localData = await chrome.storage.local.get([INIT_MARKER_KEY]);
-  if (!localData[INIT_MARKER_KEY]) {
-    try {
-      const url = chrome.runtime.getURL('templates/defaults.json');
-      const response = await fetch(url);
-      const defaults = await response.json();
-      
-      // Save defaults to storage
-      await saveTemplates(defaults, false); // false to avoid initial auto-backup noise, or true if we want it
-      
-      // Mark as initialized
-      await chrome.storage.local.set({ [INIT_MARKER_KEY]: true });
-      console.log('Starter templates loaded successfully.');
-    } catch (err) {
-      console.error('Failed to load defaults.json', err);
-    }
-  }
-}
+// ── Low-level template read/write ───────────────────
 
-/**
- * Retrieves all user templates. Checks sync storage first, then local fallback.
- * @returns {Array} Array of template objects.
- */
-export async function getTemplates() {
-  return new Promise((resolve) => {
-    chrome.storage.sync.get([SYNC_KEY], (syncData) => {
+async function readTemplates() {
+  return new Promise(resolve => {
+    chrome.storage.sync.get([SYNC_KEY], syncData => {
       if (chrome.runtime.lastError || !syncData[SYNC_KEY]) {
-        // Fallback to local
-        chrome.storage.local.get([LOCAL_FALLBACK_KEY], (localData) => {
-          resolve(localData[LOCAL_FALLBACK_KEY] || []);
+        chrome.storage.local.get([LOCAL_FALLBACK], localData => {
+          resolve(localData[LOCAL_FALLBACK] || []);
         });
       } else {
         resolve(syncData[SYNC_KEY] || []);
@@ -58,134 +37,301 @@ export async function getTemplates() {
   });
 }
 
-/**
- * Internal function to save the templates array to storage.
- * Attempts sync first, falls back to local if quota exceeded.
- */
-async function saveTemplates(templatesArray, triggerBackup = true) {
-  if (triggerBackup) {
-    // Await the backup creation before saving new state
-    await createAutoBackup();
-  }
-
+async function writeTemplates(templates, triggerBackup = true) {
+  if (triggerBackup) await createAutoBackup();
   return new Promise((resolve, reject) => {
-    chrome.storage.sync.set({ [SYNC_KEY]: templatesArray }, () => {
+    chrome.storage.sync.set({ [SYNC_KEY]: templates }, () => {
       if (chrome.runtime.lastError) {
-        console.warn('Sync storage failed (likely quota exceeded). Falling back to local storage.', chrome.runtime.lastError);
-        // Clear sync key to avoid split brain, then save to local
         chrome.storage.sync.remove([SYNC_KEY], () => {
-          chrome.storage.local.set({ [LOCAL_FALLBACK_KEY]: templatesArray }, () => {
-            if (chrome.runtime.lastError) {
-              reject(chrome.runtime.lastError);
-            } else {
-              resolve();
-            }
+          chrome.storage.local.set({ [LOCAL_FALLBACK]: templates }, () => {
+            if (chrome.runtime.lastError) reject(chrome.runtime.lastError);
+            else resolve();
           });
         });
       } else {
-        // Clean up local fallback if sync succeeded
-        chrome.storage.local.remove([LOCAL_FALLBACK_KEY]);
+        chrome.storage.local.remove([LOCAL_FALLBACK]);
         resolve();
       }
     });
   });
 }
 
-/**
- * Creates a snapshot of the CURRENT state and pushes it to the auto_backups array.
- * Keeps only the last 3 snapshots.
- */
-async function createAutoBackup() {
-  const currentTemplates = await getTemplates();
-  if (!currentTemplates || currentTemplates.length === 0) return; // Don't backup empty state
+// ── Migration ────────────────────────────────────────
 
-  const snapshot = {
-    timestamp: new Date().toISOString(),
-    templates: JSON.parse(JSON.stringify(currentTemplates)) // Deep copy
-  };
-
-  return new Promise((resolve) => {
-    chrome.storage.local.get([AUTO_BACKUPS_KEY], (data) => {
-      let backups = data[AUTO_BACKUPS_KEY] || [];
-      backups.unshift(snapshot); // Add to beginning
-      if (backups.length > 3) {
-        backups = backups.slice(0, 3); // Keep only the latest 3
-      }
-      chrome.storage.local.set({ [AUTO_BACKUPS_KEY]: backups }, resolve);
-    });
+async function migrateIfNeeded(templates) {
+  let dirty = false;
+  const migrated = templates.map(t => {
+    const out = { ...t };
+    if (out.library_id === undefined) { out.library_id = null;  dirty = true; }
+    if (out.favorited  === undefined) { out.favorited  = false; dirty = true; }
+    if ((out.schema_version || 1) < CURRENT_SCHEMA) {
+      out.schema_version = CURRENT_SCHEMA;
+      dirty = true;
+    }
+    return out;
   });
+  if (dirty) await writeTemplates(migrated, false);
+  return migrated;
 }
 
-export async function getAutoBackups() {
-  return new Promise((resolve) => {
-    chrome.storage.local.get([AUTO_BACKUPS_KEY], (data) => {
-      resolve(data[AUTO_BACKUPS_KEY] || []);
-    });
-  });
+// ── Initialisation ───────────────────────────────────
+
+export async function initializeStorage() {
+  const localData = await new Promise(r =>
+    chrome.storage.local.get([INIT_MARKER_KEY], r)
+  );
+
+  if (!localData[INIT_MARKER_KEY]) {
+    try {
+      const url      = chrome.runtime.getURL('templates/defaults.json');
+      const response = await fetch(url);
+      const defaults = await response.json();
+      const seeded   = defaults.map(t => ({
+        schema_version: CURRENT_SCHEMA,
+        library_id: null,
+        favorited:  false,
+        ...t,
+      }));
+      await writeTemplates(seeded, false);
+      await chrome.storage.local.set({ [INIT_MARKER_KEY]: true });
+    } catch (err) {
+      console.error('[Prompt Pocket] Failed to load defaults.json', err);
+    }
+  } else {
+    // Run migration on every load — idempotent, only writes when something changed
+    const existing = await readTemplates();
+    await migrateIfNeeded(existing);
+  }
 }
 
-export async function restoreTemplates(templatesArray) {
-  // Use true to trigger a backup of the current state BEFORE restoring the old one
-  await saveTemplates(templatesArray, true);
+// ── Public template reads ────────────────────────────
+
+/** All templates (My Templates + all library templates). */
+export async function getTemplates() {
+  const raw = await readTemplates();
+  return migrateIfNeeded(raw);
 }
 
-// --- CRUD Operations ---
+/** Only My Templates (library_id === null). */
+export async function getMyTemplates() {
+  const all = await getTemplates();
+  return all.filter(t => t.library_id === null);
+}
+
+/** Templates in a specific library. */
+export async function getLibraryTemplates(libraryId) {
+  const all = await getTemplates();
+  return all.filter(t => t.library_id === libraryId);
+}
+
+/** Favourited library templates (shown in My Templates tab). */
+export async function getFavouritedTemplates() {
+  const all = await getTemplates();
+  return all.filter(t => t.library_id !== null && t.favorited === true);
+}
+
+// ── Template CRUD ────────────────────────────────────
 
 export async function addTemplate(templateData) {
   const templates = await getTemplates();
-  const newTemplate = {
-    schema_version: 1,
-    id: generateUUID(),
-    ...templateData,
-    source: 'user',
+  const newT = {
+    schema_version: CURRENT_SCHEMA,
+    id:         generateId(),
+    library_id: templateData.library_id ?? null,
+    favorited:  false,
+    source:     'user',
     created_at: new Date().toISOString(),
-    modified_at: new Date().toISOString()
+    modified_at: new Date().toISOString(),
+    ...templateData,
   };
-  templates.push(newTemplate);
-  await saveTemplates(templates);
-  return newTemplate;
+  templates.push(newT);
+  await writeTemplates(templates);
+  return newT;
 }
 
 export async function updateTemplate(id, templateData) {
   const templates = await getTemplates();
-  const index = templates.findIndex(t => t.id === id);
-  if (index !== -1) {
-    templates[index] = {
-      ...templates[index],
-      ...templateData,
-      modified_at: new Date().toISOString()
-    };
-    await saveTemplates(templates);
-    return templates[index];
-  }
-  throw new Error(`Template with ID ${id} not found.`);
+  const idx = templates.findIndex(t => t.id === id);
+  if (idx === -1) throw new Error(`Template ${id} not found.`);
+  templates[idx] = { ...templates[idx], ...templateData, modified_at: new Date().toISOString() };
+  await writeTemplates(templates);
+  return templates[idx];
 }
 
 export async function deleteTemplate(id) {
   let templates = await getTemplates();
   templates = templates.filter(t => t.id !== id);
-  await saveTemplates(templates);
+  await writeTemplates(templates);
 }
 
-// --- Settings Operations ---
+/** Move a template to a different library (or null = My Templates). */
+export async function moveTemplate(id, libraryId) {
+  const templates = await getTemplates();
+  const idx = templates.findIndex(t => t.id === id);
+  if (idx === -1) throw new Error(`Template ${id} not found.`);
+  templates[idx] = {
+    ...templates[idx],
+    library_id: libraryId,
+    favorited:  libraryId === null ? false : templates[idx].favorited,
+    modified_at: new Date().toISOString(),
+  };
+  await writeTemplates(templates);
+  return templates[idx];
+}
+
+/** Toggle the favorited flag on a library template. */
+export async function toggleFavourite(id) {
+  const templates = await getTemplates();
+  const idx = templates.findIndex(t => t.id === id);
+  if (idx === -1) throw new Error(`Template ${id} not found.`);
+  templates[idx] = { ...templates[idx], favorited: !templates[idx].favorited };
+  await writeTemplates(templates, false); // favouriting doesn't need a backup
+  return templates[idx];
+}
+
+// ── Library CRUD ─────────────────────────────────────
+
+export async function getLibraries() {
+  return new Promise(resolve =>
+    chrome.storage.local.get([LIBRARIES_KEY], d =>
+      resolve(d[LIBRARIES_KEY] || [])
+    )
+  );
+}
+
+export async function createLibrary(name) {
+  const libs = await getLibraries();
+  const newLib = { id: generateId(), name: name.trim(), created_at: new Date().toISOString() };
+  libs.push(newLib);
+  await new Promise(r => chrome.storage.local.set({ [LIBRARIES_KEY]: libs }, r));
+  return newLib;
+}
+
+export async function renameLibrary(id, name) {
+  const libs = await getLibraries();
+  const idx  = libs.findIndex(l => l.id === id);
+  if (idx === -1) throw new Error(`Library ${id} not found.`);
+  libs[idx] = { ...libs[idx], name: name.trim() };
+  await new Promise(r => chrome.storage.local.set({ [LIBRARIES_KEY]: libs }, r));
+  return libs[idx];
+}
+
+/**
+ * Delete a library. Its templates are moved to My Templates and favorited is reset.
+ */
+export async function deleteLibrary(id) {
+  // Move all library templates to My Templates
+  const templates = await getTemplates();
+  const updated   = templates.map(t =>
+    t.library_id === id ? { ...t, library_id: null, favorited: false } : t
+  );
+  await writeTemplates(updated, false);
+
+  // Remove library metadata
+  const libs = await getLibraries();
+  await new Promise(r =>
+    chrome.storage.local.set({ [LIBRARIES_KEY]: libs.filter(l => l.id !== id) }, r)
+  );
+}
+
+// ── Settings ─────────────────────────────────────────
 
 export async function getSettings() {
-  return new Promise((resolve) => {
-    chrome.storage.local.get(['settings'], (data) => {
-      resolve(data.settings || {
-        schema_version: 1,
-        theme_override: 'follow',
-        default_category: 'General',
-        inline_overlay_enabled: true
-      });
-    });
-  });
+  return new Promise(resolve =>
+    chrome.storage.local.get(['settings'], d =>
+      resolve(d.settings || {
+        schema_version:          CURRENT_SCHEMA,
+        theme_override:          'navy',
+        default_category:        'General',
+        inline_overlay_enabled:  true,
+        density:                 'compact',
+        show_badges:             true,
+        enabled_ai_tools:        ['chatgpt', 'copilot', 'm365-copilot'],
+        library_sort:            'newest',
+        my_tab_search:           '',
+        my_tab_tags:             [],
+      })
+    )
+  );
 }
 
 export async function updateSettings(newSettings) {
   const settings = await getSettings();
-  const updated = { ...settings, ...newSettings };
-  return new Promise((resolve) => {
-    chrome.storage.local.set({ settings: updated }, () => resolve(updated));
-  });
+  const updated  = { ...settings, ...newSettings };
+  return new Promise(resolve =>
+    chrome.storage.local.set({ settings: updated }, () => resolve(updated))
+  );
+}
+
+// ── Auto-backups ─────────────────────────────────────
+
+async function createAutoBackup() {
+  const current = await readTemplates();
+  if (!current?.length) return;
+  const libs     = await getLibraries();
+  const snapshot = {
+    timestamp: new Date().toISOString(),
+    templates: JSON.parse(JSON.stringify(current)),
+    libraries: JSON.parse(JSON.stringify(libs)),
+  };
+  return new Promise(resolve =>
+    chrome.storage.local.get([AUTO_BACKUPS_KEY], d => {
+      let backups = d[AUTO_BACKUPS_KEY] || [];
+      backups.unshift(snapshot);
+      if (backups.length > 3) backups = backups.slice(0, 3);
+      chrome.storage.local.set({ [AUTO_BACKUPS_KEY]: backups }, resolve);
+    })
+  );
+}
+
+export async function getAutoBackups() {
+  return new Promise(resolve =>
+    chrome.storage.local.get([AUTO_BACKUPS_KEY], d =>
+      resolve(d[AUTO_BACKUPS_KEY] || [])
+    )
+  );
+}
+
+export async function restoreTemplates(templatesArray) {
+  await writeTemplates(templatesArray, true);
+}
+
+// ── Export / Import helpers ───────────────────────────
+
+/**
+ * Build an export envelope.
+ * @param {'my'|'all'} scope  'my' = My Templates only, 'all' = templates + libraries
+ */
+export async function buildExport(scope = 'my') {
+  const templates = await getTemplates();
+  const exported  = scope === 'all'
+    ? templates
+    : templates.filter(t => t.library_id === null);
+
+  const envelope = {
+    export_version: 1,
+    exported_at:    new Date().toISOString(),
+    scope,
+    templates:      exported,
+  };
+
+  if (scope === 'all') {
+    envelope.libraries = await getLibraries();
+  }
+
+  return envelope;
+}
+
+/**
+ * Restore from an export envelope (supports both v1 bare arrays and v2 envelopes).
+ * Returns { templates, libraries } ready for the caller to merge.
+ */
+export function parseExportEnvelope(raw) {
+  // Legacy: bare array of templates
+  if (Array.isArray(raw)) return { templates: raw, libraries: [] };
+  // v2 envelope
+  return {
+    templates: raw.templates || [],
+    libraries: raw.libraries || [],
+  };
 }

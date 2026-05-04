@@ -22,6 +22,24 @@ if (!window.__ai_prompts_injector_injected) {
       'textarea[placeholder="Message Copilot"]',
       '#composer-input textarea',
       '#composer textarea'
+    ],
+    'm365.cloud.microsoft': [
+      'textarea[aria-label]',
+      '#m365-chat-textarea',
+      'div[contenteditable="true"][aria-label]',
+      'div[contenteditable="true"]',
+      'textarea'
+    ],
+    'gemini.google.com': [
+      'div[contenteditable="true"][aria-label]',
+      '.ql-editor',
+      'rich-textarea div[contenteditable]',
+      'div[contenteditable="true"]'
+    ],
+    'claude.ai': [
+      'div[contenteditable="true"][data-placeholder]',
+      '.ProseMirror',
+      'div[contenteditable="true"]'
     ]
   };
 
@@ -30,8 +48,12 @@ if (!window.__ai_prompts_injector_injected) {
    * @returns {string|null} The key matching the SELECTORS map, or null if unsupported.
    */
   function getHostType() {
-    if (window.location.hostname.includes('chatgpt.com') || window.location.hostname.includes('chat.openai.com')) return 'chatgpt.com';
-    if (window.location.hostname.includes('copilot.microsoft.com')) return 'copilot.microsoft.com';
+    const h = window.location.hostname;
+    if (h.includes('chatgpt.com') || h.includes('chat.openai.com')) return 'chatgpt.com';
+    if (h.includes('copilot.microsoft.com'))  return 'copilot.microsoft.com';
+    if (h.includes('m365.cloud.microsoft'))   return 'm365.cloud.microsoft';
+    if (h.includes('gemini.google.com'))      return 'gemini.google.com';
+    if (h.includes('claude.ai'))              return 'claude.ai';
     return null;
   }
 

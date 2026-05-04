@@ -19,6 +19,18 @@ if (!window.__ai_prompts_canary_injected) {
     'copilot.microsoft.com': {
       input: ['#userInput', 'textarea[placeholder="Message Copilot"]', '#composer-input textarea'],
       theme: ['html[data-theme="dark"]', 'html[data-theme="light"]']
+    },
+    'm365.cloud.microsoft': {
+      input: ['textarea[aria-label]', 'div[contenteditable="true"][aria-label]', 'div[contenteditable="true"]'],
+      theme: ['html[data-theme="dark"]', 'html[data-theme="light"]', 'html.dark']
+    },
+    'gemini.google.com': {
+      input: ['div[contenteditable="true"][aria-label]', '.ql-editor', 'div[contenteditable="true"]'],
+      theme: ['html[data-theme="dark"]', 'html[data-theme="light"]', 'body.dark']
+    },
+    'claude.ai': {
+      input: ['div[contenteditable="true"][data-placeholder]', '.ProseMirror', 'div[contenteditable="true"]'],
+      theme: ['html.dark', 'html[data-theme="dark"]', 'html[data-theme="light"]']
     }
   };
 
@@ -28,8 +40,12 @@ if (!window.__ai_prompts_canary_injected) {
    * @returns {string|null} The key matching the CANARY_TARGETS map, or null if unsupported.
    */
   function getCanaryHostType() {
-    if (window.location.hostname.includes('chatgpt.com') || window.location.hostname.includes('chat.openai.com')) return 'chatgpt.com';
-    if (window.location.hostname.includes('copilot.microsoft.com')) return 'copilot.microsoft.com';
+    const h = window.location.hostname;
+    if (h.includes('chatgpt.com') || h.includes('chat.openai.com')) return 'chatgpt.com';
+    if (h.includes('copilot.microsoft.com'))  return 'copilot.microsoft.com';
+    if (h.includes('m365.cloud.microsoft'))   return 'm365.cloud.microsoft';
+    if (h.includes('gemini.google.com'))      return 'gemini.google.com';
+    if (h.includes('claude.ai'))              return 'claude.ai';
     return null;
   }
 

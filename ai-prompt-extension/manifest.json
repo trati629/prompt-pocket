@@ -14,6 +14,9 @@
     "https://chatgpt.com/*",
     "https://chat.openai.com/*",
     "https://copilot.microsoft.com/*",
+    "https://m365.cloud.microsoft/*",
+    "https://gemini.google.com/*",
+    "https://claude.ai/*",
     "https://api.github.com/*"
   ],
   "side_panel": {
@@ -33,7 +36,10 @@
       "matches": [
         "https://chatgpt.com/*",
         "https://chat.openai.com/*",
-        "https://copilot.microsoft.com/*"
+        "https://copilot.microsoft.com/*",
+        "https://m365.cloud.microsoft/*",
+        "https://gemini.google.com/*",
+        "https://claude.ai/*"
       ],
       "js": [
         "content/theme-detector.js",

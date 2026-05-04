@@ -8,13 +8,24 @@
 import {
   initializeStorage,
   getTemplates,
+  getMyTemplates,
+  getLibraryTemplates,
+  getFavouritedTemplates,
   addTemplate,
   updateTemplate,
   deleteTemplate,
+  moveTemplate,
+  toggleFavourite,
+  getLibraries,
+  createLibrary,
+  renameLibrary,
+  deleteLibrary,
   getSettings,
   updateSettings,
   getAutoBackups,
-  restoreTemplates
+  restoreTemplates,
+  buildExport,
+  parseExportEnvelope,
 } from './storage.js';
 
 // ── Category definitions (mirrors design) ──────────
@@ -36,6 +47,16 @@ const LIBRARY_PACKS = [
   { id: 'l5', name: 'Daily Journaling',     author: '@quietmornings',count: 9,  installed: false, hue: '#D9B86F' },
 ];
 
+// ── AI tool definitions ─────────────────────────────
+const AI_TOOLS = [
+  { id: 'chatgpt',      label: 'ChatGPT',      url: 'https://chatgpt.com',                  color: '#10a37f', defaultEnabled: true,  comingSoon: false },
+  { id: 'copilot',      label: 'Copilot',      url: 'https://copilot.microsoft.com',         color: '#0078d4', defaultEnabled: true,  comingSoon: false },
+  { id: 'm365-copilot', label: 'M365 Copilot', url: 'https://m365.cloud.microsoft/chat',     color: '#0078d4', defaultEnabled: true,  comingSoon: false },
+  { id: 'gemini',       label: 'Gemini',       url: 'https://gemini.google.com',             color: '#4285f4', defaultEnabled: false, comingSoon: false },
+  { id: 'claude',       label: 'Claude',       url: 'https://claude.ai',                     color: '#D97757', defaultEnabled: false, comingSoon: false },
+  { id: 'grok',         label: 'Grok',         url: 'https://grok.com',                      color: '#9E9E9E', defaultEnabled: false, comingSoon: true  },
+];
+
 // Theme definitions for settings picker
 const THEME_OPTIONS = [
   { id: 'navy',      label: 'Navy',  hint: 'Dark + gold',    swatch: ['#0F1320', '#161B2C', '#C4A974'] },
@@ -44,14 +65,23 @@ const THEME_OPTIONS = [
 ];
 
 // ── State ───────────────────────────────────────────
-let allTemplates = [];
-let currentEditingId = null;
-let currentUseId = null;
-let varValues = {};
-let activeDensity = 'compact';
-let showBadges = true;
-let libraryPackState = LIBRARY_PACKS.map(p => ({ ...p }));
-let isDormantMode = false;
+let allTemplates    = [];   // all templates flat (My + library)
+let allLibraries    = [];   // library metadata array
+let currentEditingId  = null;
+let currentUseId      = null;
+let varValues         = {};
+let activeDensity     = 'compact';
+let showBadges        = true;
+let libraryPackState  = LIBRARY_PACKS.map(p => ({ ...p }));
+let isDormantMode     = false;
+let currentLibraryId  = null;  // library open in detail view
+let libSort           = 'newest'; // 'az'|'za'|'newest'|'oldest'
+
+// Per-tab persisted filter state
+const tabState = {
+  my:  { search: '', tags: [] },
+  lib: { search: '', tags: [], detailSearch: '', detailTags: [] },
+};
 
 const urlParams = new URLSearchParams(window.location.search);
 
@@ -116,7 +146,12 @@ async function init() {
 
   const settings = await getSettings();
   activeDensity = settings.density || 'compact';
-  showBadges = settings.show_badges !== false;
+  showBadges    = settings.show_badges !== false;
+  libSort       = settings.library_sort || 'newest';
+
+  // Restore persisted tab filter state
+  tabState.my.search  = settings.my_tab_search || '';
+  tabState.my.tags    = settings.my_tab_tags   || [];
 
   applyThemeOverride(settings.theme_override || 'navy');
   populateSettingsForm(settings);
@@ -124,52 +159,79 @@ async function init() {
   initCategoryChips();
   initThemeOptions(settings.theme_override || 'navy');
   initDensityOptions(activeDensity);
+  initAIToolsSettings(settings.enabled_ai_tools);
   initLibraryPackState();
+  renderDormantButtons(settings.enabled_ai_tools);
 
-  await refreshList();
+  // Load both templates and library metadata
+  [allTemplates, allLibraries] = await Promise.all([getTemplates(), getLibraries()]);
+
+  renderMyTemplatesPanel();
+  updateTabCounts();
+  initLibrarySelector();
 
   if (urlParams.get('view') === 'settings') switchView('view-settings');
 
-  // Update about meta
   const aboutEl = document.getElementById('about-meta');
-  if (aboutEl) aboutEl.textContent = `v${chrome.runtime.getManifest().version} · ${allTemplates.length} template${allTemplates.length !== 1 ? 's' : ''}`;
+  if (aboutEl) {
+    const myCount = allTemplates.filter(t => t.library_id === null).length;
+    aboutEl.textContent = `v${chrome.runtime.getManifest().version} · ${myCount} template${myCount !== 1 ? 's' : ''}`;
+  }
 
   checkForUpdate();
 }
 
-// ── Rendering: template list ────────────────────────
+// ── Data refresh ────────────────────────────────────
+async function refreshAll() {
+  [allTemplates, allLibraries] = await Promise.all([getTemplates(), getLibraries()]);
+  updateTabCounts();
+  initLibrarySelector();
+  const activeTab = document.querySelector('.tab.active')?.dataset.tab || 'my';
+  if (activeTab === 'my') renderMyTemplatesPanel();
+  else if (currentLibraryId) renderLibraryDetail(currentLibraryId);
+  else renderLibraryListPanel();
+}
+
+// kept for compatibility with existing callers
 async function refreshList() {
-  allTemplates = await getTemplates();
-  const tab = document.querySelector('.tab.active')?.dataset.tab || 'my';
-  renderTab(tab);
-  updateTabCount();
+  await refreshAll();
 }
 
-function updateTabCount() {
-  const el = document.getElementById('tab-count-my');
-  if (el) el.textContent = allTemplates.length;
+function updateTabCounts() {
+  const myCount  = allTemplates.filter(t => t.library_id === null).length
+                 + allTemplates.filter(t => t.library_id !== null && t.favorited).length;
+  const libCount = allLibraries.length;
+  const myEl  = document.getElementById('tab-count-my');
+  const libEl = document.getElementById('tab-count-libs');
+  if (myEl)  myEl.textContent  = myCount  || '';
+  if (libEl) libEl.textContent = libCount || '';
 }
 
-function renderTab(tab) {
-  if (tab === 'my') {
-    const q = document.getElementById('search-input')?.value.toLowerCase() || '';
-    const filtered = filterTemplates(allTemplates, q);
-    renderTemplates(filtered);
-  } else {
-    renderLibraries();
+// ── Filter helpers ───────────────────────────────────
+function filterTemplates(templates, q, activeTags = []) {
+  let list = templates;
+  if (q) {
+    const lq = q.toLowerCase();
+    list = list.filter(t =>
+      t.title?.toLowerCase().includes(lq) ||
+      t.body?.toLowerCase().includes(lq)  ||
+      (t.tags || []).some(tag => tag.toLowerCase().includes(lq)) ||
+      categoryOf(t.category).label.toLowerCase().includes(lq)
+    );
   }
+  if (activeTags.length > 0) {
+    // OR logic: template must have at least one of the selected tags
+    list = list.filter(t =>
+      activeTags.some(at => (t.tags || []).map(x => x.toLowerCase()).includes(at.toLowerCase()))
+    );
+  }
+  return [...list].sort((a, b) => Number(b.pinned) - Number(a.pinned));
 }
 
-function filterTemplates(templates, q) {
-  if (!q) return [...templates].sort((a, b) => Number(b.pinned) - Number(a.pinned));
-  return templates
-    .filter(t =>
-      t.title?.toLowerCase().includes(q) ||
-      t.body?.toLowerCase().includes(q) ||
-      (t.tags || []).some(tag => tag.toLowerCase().includes(q)) ||
-      categoryOf(t.category).label.toLowerCase().includes(q)
-    )
-    .sort((a, b) => Number(b.pinned) - Number(a.pinned));
+function uniqueTags(templates) {
+  const set = new Set();
+  templates.forEach(t => (t.tags || []).forEach(tag => set.add(tag)));
+  return [...set].sort();
 }
 
 let listDelegated = false;
@@ -240,17 +302,27 @@ function renderTemplates(templates) {
       ? relativeTime(t.modified_at)
       : (t.updated || '');
 
+    // Library badge — shown when a favourited library template appears in My Templates
+    const lib = t.library_id ? allLibraries.find(l => l.id === t.library_id) : null;
+    const libBadgeHtml = lib
+      ? `<span class="lib-badge" data-lib-id="${lib.id}" title="From library: ${escHtml(lib.name)}">
+           <svg width="9" height="9" aria-hidden="true"><use href="#ic-sparkle"/></svg>
+           ${escHtml(lib.name)}
+         </span>`
+      : '';
+
     card.innerHTML = `
       <div class="template-card-inner">
         <div class="template-card-body">
           <div class="template-card-title-row">
             ${t.pinned ? `<svg class="template-pin" width="10" height="10" aria-hidden="true"><use href="#ic-pin"/></svg>` : ''}
             <span class="template-title">${escHtml(t.title)}</span>
+            ${libBadgeHtml}
           </div>
           <div class="template-preview">${escHtml(preview)}</div>
           <div class="template-card-meta">
             ${badgeHtml}
-            <span class="template-meta-text">${(t.uses || 0)} uses${metaDate ? ' · ' + metaDate : ''}</span>
+            <span class="template-meta-text">${metaDate || ''}</span>
           </div>
         </div>
         <button type="button" class="template-edit-btn" aria-label="Edit ${escHtml(t.title)}">
@@ -445,19 +517,27 @@ function insertTextToHost(text) {
 }
 
 // ── Form ────────────────────────────────────────────
-async function openForm(templateId = null) {
+// presetLibraryId: when opening "New Template" from inside a library
+async function openForm(templateId = null, presetLibraryId = null) {
   currentEditingId = templateId;
-  const btnDelete = document.getElementById('btn-delete-template');
-  const titleInput = document.getElementById('template-title');
-  const bodyInput = document.getElementById('template-body');
+  const btnDelete   = document.getElementById('btn-delete-template');
+  const titleInput  = document.getElementById('template-title');
+  const bodyInput   = document.getElementById('template-body');
+  const favRow      = document.getElementById('form-favourite-row');
 
   if (templateId) {
-    document.getElementById('form-title').textContent = 'Edit Template';
     const t = allTemplates.find(x => x.id === templateId);
     if (t) {
+      // Library templates open read-only with a "Save as new in My Templates" prompt
+      if (t.library_id) {
+        document.getElementById('form-title').textContent = 'View Template (Library)';
+      } else {
+        document.getElementById('form-title').textContent = 'Edit Template';
+      }
       titleInput.value = t.title;
       setSelectedCategory(t.category || 'general');
-      bodyInput.value = t.body;
+      bodyInput.value  = t.body;
+      setFormLibrary(t.library_id, t.favorited);
       btnDelete?.classList.remove('hidden');
     }
   } else {
@@ -468,11 +548,45 @@ async function openForm(templateId = null) {
       CATEGORIES.find(c => c.label.toLowerCase() === (settings.default_category || 'general').toLowerCase())?.id || 'general'
     );
     bodyInput.value = '';
+    setFormLibrary(presetLibraryId, false);
     btnDelete?.classList.add('hidden');
   }
 
+  // Show/hide favourite toggle based on current library selection
+  const libSel = document.getElementById('template-library');
+  favRow?.classList.toggle('hidden', !libSel?.value);
+
   updateDetectedVars(bodyInput.value);
   switchView('view-form');
+}
+
+function setFormLibrary(libraryId, favorited) {
+  const sel  = document.getElementById('template-library');
+  const fav  = document.getElementById('template-favourite');
+  const favRow = document.getElementById('form-favourite-row');
+  if (sel) sel.value = libraryId || '';
+  if (fav) fav.checked = !!favorited;
+  favRow?.classList.toggle('hidden', !libraryId);
+}
+
+function initLibrarySelector() {
+  const sel = document.getElementById('template-library');
+  if (!sel) return;
+  // Preserve current value across refreshes
+  const current = sel.value;
+  sel.innerHTML = '<option value="">My Templates</option>';
+  allLibraries.forEach(lib => {
+    const opt = document.createElement('option');
+    opt.value = lib.id;
+    opt.textContent = lib.name;
+    sel.appendChild(opt);
+  });
+  // + New Library option
+  const newOpt = document.createElement('option');
+  newOpt.value = '__new__';
+  newOpt.textContent = '+ New Library…';
+  sel.appendChild(newOpt);
+  sel.value = current || '';
 }
 
 // Category chip selection
@@ -528,6 +642,26 @@ function updateDetectedVars(body) {
 document.getElementById('btn-new-template')?.addEventListener('click', () => openForm());
 document.getElementById('btn-cancel-form')?.addEventListener('click', () => switchView('view-main'));
 
+// Library selector change — show/hide favourite toggle + handle "+ New Library"
+document.getElementById('template-library')?.addEventListener('change', async e => {
+  const val = e.target.value;
+  const favRow = document.getElementById('form-favourite-row');
+  if (val === '__new__') {
+    const name = prompt('New library name:')?.trim();
+    if (!name) { e.target.value = currentEditingId
+      ? (allTemplates.find(t => t.id === currentEditingId)?.library_id || '')
+      : ''; return; }
+    if (allLibraries.find(l => l.name.toLowerCase() === name.toLowerCase())) {
+      alert('A library with that name already exists.'); e.target.value = ''; return;
+    }
+    const lib = await createLibrary(name);
+    allLibraries.push(lib);
+    initLibrarySelector();
+    e.target.value = lib.id;
+  }
+  favRow?.classList.toggle('hidden', !e.target.value);
+});
+
 document.getElementById('btn-send-from-edit')?.addEventListener('click', () => {
   const body = document.getElementById('template-body')?.value.trim();
   if (!body) return;
@@ -542,22 +676,39 @@ document.getElementById('btn-copy-from-edit')?.addEventListener('click', () => {
 });
 
 document.getElementById('btn-save-template')?.addEventListener('click', async () => {
-  const title = document.getElementById('template-title')?.value.trim();
-  const body = document.getElementById('template-body')?.value.trim();
+  const title    = document.getElementById('template-title')?.value.trim();
+  const body     = document.getElementById('template-body')?.value.trim();
   if (!title || !body) { alert('Title and Body are required.'); return; }
 
-  const category = document.getElementById('template-category')?.value || 'general';
-  const tagsRaw = document.getElementById('template-tags')?.value || '';
-  const tags = tagsRaw.split(',').map(s => s.trim()).filter(Boolean);
+  const category   = document.getElementById('template-category')?.value || 'general';
+  const tagsRaw    = document.getElementById('template-tags')?.value || '';
+  const tags       = tagsRaw.split(',').map(s => s.trim()).filter(Boolean);
+  const libraryId  = document.getElementById('template-library')?.value || null;
+  const favorited  = document.getElementById('template-favourite')?.checked || false;
 
   try {
     if (currentEditingId) {
-      await updateTemplate(currentEditingId, { title, body, category, tags });
-      showToast('Changes saved');
+      const existing = allTemplates.find(t => t.id === currentEditingId);
+      if (existing?.library_id) {
+        // Library templates save as NEW in My Templates — confirmed by user
+        if (!confirm('Library templates cannot be edited directly.\n\nSave a copy to My Templates?')) return;
+        await addTemplate({ title, body, category, tags, library_id: null, favorited: false });
+        showToast('Saved as new in My Templates');
+      } else {
+        const newLibId = libraryId === '' ? null : (libraryId || null);
+        await updateTemplate(currentEditingId, { title, body, category, tags, library_id: newLibId, favorited });
+        // Handle move if library changed
+        if (newLibId !== existing?.library_id) {
+          await moveTemplate(currentEditingId, newLibId);
+        }
+        showToast('Changes saved');
+      }
     } else {
-      await addTemplate({ title, body, category, tags });
+      const newLibId = libraryId === '' ? null : (libraryId || null);
+      await addTemplate({ title, body, category, tags, library_id: newLibId, favorited });
       showToast('Template saved');
     }
+    await refreshAll();
     switchView('view-main');
   } catch (err) {
     console.error(err);
@@ -578,24 +729,27 @@ document.getElementById('btn-delete-template')?.addEventListener('click', async 
   }
 });
 
-// ── Search ──────────────────────────────────────────
+// ── Search (My Templates tab) ────────────────────────
 document.getElementById('search-input')?.addEventListener('input', e => {
-  const q = e.target.value;
-  const clear = document.getElementById('btn-search-clear');
-  if (clear) clear.classList.toggle('hidden', !q);
-  const tab = document.querySelector('.tab.active')?.dataset.tab || 'my';
-  if (tab === 'my') renderTemplates(filterTemplates(allTemplates, q.toLowerCase()));
+  tabState.my.search = e.target.value;
+  document.getElementById('btn-search-clear')?.classList.toggle('hidden', !e.target.value);
+  renderMyTemplatesPanel();
+  updateSettings({ my_tab_search: tabState.my.search });
 });
 
 document.getElementById('btn-search-clear')?.addEventListener('click', () => {
+  tabState.my.search = '';
   const input = document.getElementById('search-input');
-  if (input) { input.value = ''; input.dispatchEvent(new Event('input')); input.focus(); }
+  if (input) { input.value = ''; input.focus(); }
   document.getElementById('btn-search-clear')?.classList.add('hidden');
+  renderMyTemplatesPanel();
+  updateSettings({ my_tab_search: '' });
 });
 
 // ── Tabs ────────────────────────────────────────────
 document.querySelectorAll('.tab').forEach(tab => {
   tab.addEventListener('click', () => {
+    if (tab.disabled) return;
     document.querySelectorAll('.tab').forEach(t => {
       t.classList.remove('active');
       t.setAttribute('aria-selected', 'false');
@@ -604,13 +758,17 @@ document.querySelectorAll('.tab').forEach(tab => {
     tab.setAttribute('aria-selected', 'true');
 
     const id = tab.dataset.tab;
-    const fabBtn = document.getElementById('btn-new-template');
-    if (id === 'libs') {
-      renderLibraries();
-      if (fabBtn) fabBtn.style.display = 'none';
+    document.getElementById('panel-my')?.classList.toggle('hidden', id !== 'my');
+    document.getElementById('panel-my')?.classList.toggle('active', id === 'my');
+    document.getElementById('panel-libs')?.classList.toggle('hidden', id !== 'libs');
+    document.getElementById('panel-libs')?.classList.toggle('active', id === 'libs');
+    document.getElementById('my-fab-wrap')?.classList.toggle('hidden', id !== 'my');
+
+    if (id === 'my') {
+      renderMyTemplatesPanel();
     } else {
-      if (fabBtn) fabBtn.style.display = '';
-      renderTemplates(filterTemplates(allTemplates, document.getElementById('search-input')?.value.toLowerCase() || ''));
+      if (currentLibraryId) renderLibraryDetail(currentLibraryId);
+      else renderLibraryListPanel();
     }
   });
 });
@@ -745,16 +903,19 @@ document.getElementById('btn-open-backup')?.addEventListener('click', () => swit
 document.getElementById('btn-close-backup')?.addEventListener('click', () => switchView('view-settings'));
 
 document.getElementById('btn-export-templates')?.addEventListener('click', async () => {
-  const templates = await getTemplates();
-  const blob = new Blob([JSON.stringify(templates, null, 2)], { type: 'application/json' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `prompt-pocket-backup-${new Date().toISOString().split('T')[0]}.json`;
+  const scopeEl = document.querySelector('input[name="export-scope"]:checked');
+  const scope   = scopeEl?.value || 'my';
+  const envelope = await buildExport(scope);
+  const blob = new Blob([JSON.stringify(envelope, null, 2)], { type: 'application/json' });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href     = url;
+  a.download = `prompt-pocket-${scope}-${new Date().toISOString().split('T')[0]}.json`;
   a.click();
   URL.revokeObjectURL(url);
 });
 
+// ── Full-backup import (Backup & Restore view) ───────
 const fileImport = document.getElementById('file-import');
 document.getElementById('btn-import-templates')?.addEventListener('click', () => fileImport?.click());
 
@@ -764,20 +925,29 @@ fileImport?.addEventListener('change', e => {
   const reader = new FileReader();
   reader.onload = async ev => {
     try {
-      const imported = JSON.parse(ev.target.result);
-      if (!Array.isArray(imported)) throw new Error('Expected a JSON array.');
+      const raw = JSON.parse(ev.target.result);
+      const { templates: importedTemplates, libraries: importedLibs } = parseExportEnvelope(raw);
       const current = await getTemplates();
-      const merged = [...current];
+      const merged  = [...current];
       let count = 0;
-      for (const imp of imported) {
+      for (const imp of importedTemplates) {
         if (imp?.id && imp.title && imp.body) {
           const idx = merged.findIndex(t => t.id === imp.id);
-          if (idx !== -1) merged[idx] = imp;
-          else merged.push(imp);
+          if (idx !== -1) merged[idx] = imp; else merged.push(imp);
           count++;
         }
       }
       await restoreTemplates(merged);
+      // Restore library metadata that doesn't already exist
+      if (importedLibs.length) {
+        const existingLibs = await getLibraries();
+        for (const lib of importedLibs) {
+          if (!existingLibs.find(l => l.id === lib.id)) {
+            await createLibrary(lib.name);
+          }
+        }
+      }
+      await refreshAll();
       showToast(`${count} template${count !== 1 ? 's' : ''} imported`);
       switchView('view-main');
     } catch (err) {
@@ -1106,7 +1276,7 @@ function showImportParseError(msg) {
 // ── Review screen ────────────────────────────────────
 function openImportReview(valid, invalid) {
   // Summary bar
-  document.getElementById('import-valid-count').textContent  = `${valid.length} valid`;
+  document.getElementById('import-valid-count').textContent = `${valid.length} valid`;
   const invalEl = document.getElementById('import-invalid-count');
   if (invalid.length > 0) {
     invalEl.textContent = `${invalid.length} invalid`;
@@ -1118,19 +1288,35 @@ function openImportReview(valid, invalid) {
     document.getElementById('import-invalid-section')?.classList.add('hidden');
   }
 
-  // Confirm button label
-  document.getElementById('btn-confirm-import-label').textContent = `Import ${valid.length}`;
   document.getElementById('btn-confirm-import').disabled = valid.length === 0;
 
-  // Reset defaults
+  // Reset category default
   document.getElementById('import-default-category').value = '';
-  document.getElementById('import-default-tags').value = '';
   initImportCategoryChips();
 
-  // Render valid rows
+  // Reset tag chips
+  importTagChips = [];
+  renderImportTagChips();
+
+  // Reset destination to My Templates
+  const myRadio = document.getElementById('import-dest-my');
+  if (myRadio) myRadio.checked = true;
+  document.getElementById('import-new-lib-wrap')?.classList.add('hidden');
+  document.getElementById('import-existing-lib-wrap')?.classList.add('hidden');
+  document.getElementById('import-lib-name-error')?.classList.add('hidden');
+  document.getElementById('import-new-lib-name') && (document.getElementById('import-new-lib-name').value = '');
+
+  // Populate existing library dropdown (hide option if no libraries)
+  const existingOption = document.getElementById('import-dest-existing-option');
+  const existingSel    = document.getElementById('import-existing-lib-select');
+  if (existingOption) existingOption.classList.toggle('hidden', allLibraries.length === 0);
+  if (existingSel)    existingSel.innerHTML = allLibraries
+    .map(l => `<option value="${l.id}">${escHtml(l.name)}</option>`).join('');
+
+  updateImportConfirmLabel();
+
   renderImportValidList(valid);
   renderImportInvalidList(invalid);
-
   switchView('view-import-review');
 }
 
@@ -1233,36 +1419,54 @@ document.getElementById('btn-back-import')?.addEventListener('click', () => swit
 document.getElementById('btn-cancel-import')?.addEventListener('click', () => switchView('view-settings'));
 
 document.getElementById('btn-confirm-import')?.addEventListener('click', async () => {
+  // Resolve destination
+  const destRadio = document.querySelector('input[name="import-dest"]:checked')?.value || 'my';
+  let targetLibraryId = null;
+
+  if (destRadio === 'new') {
+    const name = document.getElementById('import-new-lib-name')?.value.trim();
+    if (!name) {
+      document.getElementById('import-lib-name-error')?.classList.remove('hidden');
+      return;
+    }
+    if (allLibraries.find(l => l.name.toLowerCase() === name.toLowerCase())) {
+      document.getElementById('import-lib-name-error').textContent = 'A library with that name already exists.';
+      document.getElementById('import-lib-name-error')?.classList.remove('hidden');
+      return;
+    }
+    const lib = await createLibrary(name);
+    allLibraries.push(lib);
+    targetLibraryId = lib.id;
+  } else if (destRadio === 'existing') {
+    targetLibraryId = document.getElementById('import-existing-lib-select')?.value || null;
+  }
+
   const defaultCat  = document.getElementById('import-default-category')?.value || '';
-  const defaultTags = (document.getElementById('import-default-tags')?.value || '')
-    .split(',').map(t => t.trim()).filter(Boolean);
+  const defaultTags = importTagChips.slice(); // built by tag chip builder
 
-  const withDefaults = applyImportDefaults(importParsedValid, {
-    category: defaultCat,
-    tags:     defaultTags,
-  });
-
-  await runImport(withDefaults);
+  const withDefaults = applyImportDefaults(importParsedValid, { category: defaultCat, tags: defaultTags });
+  await runImport(withDefaults, targetLibraryId);
 });
 
 // ── Run the import with conflict resolution ──────────
-async function runImport(rows) {
-  // Disable the button to prevent double-submit
+async function runImport(rows, targetLibraryId = null) {
   const confirmBtn = document.getElementById('btn-confirm-import');
   if (confirmBtn) confirmBtn.disabled = true;
 
-  const { conflicts, clean } = detectImportConflicts(rows, allTemplates);
+  // Conflict detection: only check against the target destination
+  const destTemplates = allTemplates.filter(t =>
+    targetLibraryId ? t.library_id === targetLibraryId : t.library_id === null
+  );
+  const { conflicts, clean } = detectImportConflicts(rows, destTemplates);
 
-  let imported = 0;
-  let skipped  = 0;
+  let imported = 0, skipped = 0;
 
-  // 1. Add clean (no conflict) rows
   for (const row of clean) {
-    await addTemplate({ title: row.title, body: row.body, category: row.category, tags: row.tags });
+    await addTemplate({ title: row.title, body: row.body, category: row.category,
+                        tags: row.tags, library_id: targetLibraryId });
     imported++;
   }
 
-  // 2. Resolve conflicts one by one
   if (conflicts.length > 0) {
     const resolutions = await resolveConflictsSequentially(conflicts);
     for (const r of resolutions) {
@@ -1270,22 +1474,22 @@ async function runImport(rows) {
         skipped++;
       } else if (r.choice === 'overwrite') {
         await updateTemplate(r.existing.id, {
-          title:    r.incoming.title,
-          body:     r.incoming.body,
-          category: r.incoming.category,
-          tags:     r.incoming.tags,
+          title: r.incoming.title, body: r.incoming.body,
+          category: r.incoming.category, tags: r.incoming.tags,
         });
         imported++;
-      } else { // 'keep'
-        await addTemplate({ title: r.incoming.title, body: r.incoming.body, category: r.incoming.category, tags: r.incoming.tags });
+      } else {
+        await addTemplate({ title: r.incoming.title, body: r.incoming.body,
+                            category: r.incoming.category, tags: r.incoming.tags,
+                            library_id: targetLibraryId });
         imported++;
       }
     }
   }
 
   hideConflictModal();
+  await refreshAll();
   switchView('view-main');
-  await refreshList();
   showToast(`${imported} imported${skipped > 0 ? `, ${skipped} skipped` : ''}`);
 }
 
@@ -1409,6 +1613,511 @@ document.querySelectorAll('.help-tab').forEach(tab => {
     document.getElementById(`help-content-${tab.dataset.tab}`)?.classList.remove('hidden');
   });
 });
+
+// ── AI Tools settings section ───────────────────────
+function getEnabledTools(storedList) {
+  if (Array.isArray(storedList)) return storedList;
+  return AI_TOOLS.filter(t => t.defaultEnabled).map(t => t.id);
+}
+
+function initAIToolsSettings(storedList) {
+  const container = document.getElementById('ai-tools-list');
+  if (!container) return;
+  container.innerHTML = '';
+  const enabled = getEnabledTools(storedList);
+
+  AI_TOOLS.forEach((tool, idx) => {
+    const isLast   = idx === AI_TOOLS.length - 1;
+    const isOn     = enabled.includes(tool.id);
+    const row      = document.createElement('div');
+    row.className  = `setting-row${!isLast ? ' divider' : ''}`;
+
+    if (tool.comingSoon) {
+      // Greyed out with a "Soon" badge — no toggle
+      row.innerHTML = `
+        <div class="setting-info ai-tool-info">
+          <span class="ai-tool-dot" style="background:${tool.color}"></span>
+          <span class="setting-name ai-tool-name" style="color:var(--text-mute)">${escHtml(tool.label)}</span>
+        </div>
+        <span class="ai-tool-soon">W.P.F.</span>`;
+    } else {
+      row.innerHTML = `
+        <label class="setting-info ai-tool-info" for="ai-tool-${tool.id}">
+          <span class="ai-tool-dot" style="background:${tool.color}"></span>
+          <span class="setting-name ai-tool-name">${escHtml(tool.label)}</span>
+        </label>
+        <label class="switch">
+          <input type="checkbox" id="ai-tool-${tool.id}" ${isOn ? 'checked' : ''}>
+          <span class="switch-track" aria-hidden="true"></span>
+        </label>`;
+
+      row.querySelector('input').addEventListener('change', async () => {
+        const allInputs = document.querySelectorAll('#ai-tools-list input[type="checkbox"]');
+        const newEnabled = [...allInputs]
+          .filter(i => i.checked)
+          .map(i => i.id.replace('ai-tool-', ''));
+        await updateSettings({ enabled_ai_tools: newEnabled });
+        renderDormantButtons(newEnabled);
+      });
+    }
+
+    container.appendChild(row);
+  });
+}
+
+// ── Dormant pane — dynamic AI buttons ───────────────
+function renderDormantButtons(storedList) {
+  const container = document.getElementById('dormant-ai-buttons');
+  if (!container) return;
+  const enabled = getEnabledTools(storedList);
+  const tools   = AI_TOOLS.filter(t => !t.comingSoon && enabled.includes(t.id));
+  container.innerHTML = '';
+
+  // Update the hint to name the enabled tools
+  const hint = document.getElementById('dormant-hint');
+  if (hint) {
+    const names = tools.map(t => t.label);
+    hint.textContent = tools.length
+      ? `Open ${names.join(', ')} to start using your prompt templates.`
+      : 'Enable AI tools in Settings to see quick-launch buttons here.';
+  }
+
+  tools.forEach((tool, idx) => {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.setAttribute('role', 'listitem');
+    btn.className = idx === 0 ? 'btn-primary full-width' : 'btn-ghost full-width btn-centered';
+    btn.innerHTML = `
+      <span class="ai-tool-dot" style="background:${tool.color};width:8px;height:8px;border-radius:50%;flex-shrink:0"></span>
+      Open ${escHtml(tool.label)}`;
+    btn.addEventListener('click', () => chrome.tabs.create({ url: tool.url }));
+    container.appendChild(btn);
+  });
+}
+
+// ════════════════════════════════════════════════════
+// MY TEMPLATES PANEL
+// ════════════════════════════════════════════════════
+
+function renderMyTemplatesPanel() {
+  const searchInput = document.getElementById('search-input');
+  if (searchInput && searchInput.value !== tabState.my.search) {
+    searchInput.value = tabState.my.search;
+    document.getElementById('btn-search-clear')?.classList.toggle('hidden', !tabState.my.search);
+  }
+
+  const myTemplates = allTemplates.filter(t => t.library_id === null);
+  const favourited  = allTemplates.filter(t => t.library_id !== null && t.favorited);
+  const combined    = [...myTemplates, ...favourited];
+
+  const allTags = uniqueTags(combined);
+  buildTagFilter('my-tag-filter', allTags, tabState.my.tags, tag => {
+    if (tag === null) {
+      tabState.my.tags = [];
+    } else {
+      const idx = tabState.my.tags.indexOf(tag);
+      if (idx === -1) tabState.my.tags.push(tag);
+      else tabState.my.tags.splice(idx, 1);
+    }
+    updateSettings({ my_tab_tags: tabState.my.tags });
+    renderMyTemplatesPanel();
+  });
+
+  const filtered = filterTemplates(combined, tabState.my.search, tabState.my.tags);
+  showResultCount('my-result-count', filtered.length, combined.length, tabState.my.search, tabState.my.tags);
+  renderTemplates(filtered);
+}
+
+// ════════════════════════════════════════════════════
+// SHARED TAG FILTER
+// ════════════════════════════════════════════════════
+
+function buildTagFilter(containerId, allTags, activeTags, onToggle) {
+  const container = document.getElementById(containerId);
+  if (!container) return;
+  container.innerHTML = '';
+  if (!allTags.length) return;
+
+  const allChip = document.createElement('button');
+  allChip.type = 'button';
+  allChip.className = `tag-chip${activeTags.length === 0 ? ' active' : ''}`;
+  allChip.textContent = 'All';
+  allChip.addEventListener('click', () => onToggle(null));
+  container.appendChild(allChip);
+
+  allTags.forEach(tag => {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = `tag-chip${activeTags.includes(tag) ? ' active' : ''}`;
+    btn.textContent = tag;
+    btn.addEventListener('click', () => onToggle(tag));
+    container.appendChild(btn);
+  });
+}
+
+function showResultCount(countId, filtered, total, search, tags) {
+  const el = document.getElementById(countId);
+  if (!el) return;
+  const isFiltered = (search && search.length > 0) || (tags && tags.length > 0);
+  if (isFiltered && filtered < total) {
+    el.textContent = `Showing ${filtered} of ${total}`;
+    el.classList.remove('hidden');
+  } else {
+    el.classList.add('hidden');
+  }
+}
+
+// ════════════════════════════════════════════════════
+// LIBRARY LIST PANEL
+// ════════════════════════════════════════════════════
+
+function renderLibraryListPanel() {
+  currentLibraryId = null;
+  document.getElementById('lib-list-view')?.classList.remove('hidden');
+  document.getElementById('lib-detail-view')?.classList.add('hidden');
+
+  const list = document.getElementById('library-list');
+  if (!list) return;
+
+  const q       = tabState.lib.search.toLowerCase();
+  const sorted  = sortLibraries(allLibraries, libSort);
+  const visible = q ? sorted.filter(l => l.name.toLowerCase().includes(q)) : sorted;
+
+  list.innerHTML = '';
+  if (!visible.length) {
+    list.innerHTML = `<div class="empty-state">
+      <div class="empty-state-title">${allLibraries.length ? 'No matches' : 'No libraries yet'}</div>
+      <div class="empty-state-hint">${allLibraries.length
+        ? 'Try a different search.'
+        : 'Import prompts to create a library, or use the button below.'}</div>
+    </div>`;
+    return;
+  }
+
+  const frag = document.createDocumentFragment();
+  visible.forEach(lib => {
+    const count = allTemplates.filter(t => t.library_id === lib.id).length;
+    const el = document.createElement('div');
+    el.className = 'library-card';
+    el.setAttribute('role', 'listitem');
+    el.innerHTML = `
+      <div class="library-card-info">
+        <div class="library-card-name">${escHtml(lib.name)}</div>
+        <div class="library-card-meta">${count} prompt${count !== 1 ? 's' : ''}</div>
+      </div>
+      <div class="library-card-actions">
+        <button type="button" class="btn-ghost-sm lib-enter-btn" data-id="${lib.id}">Open →</button>
+        <button type="button" class="icon-btn danger lib-delete-btn" data-id="${lib.id}" aria-label="Delete ${escHtml(lib.name)}">
+          <svg width="14" height="14" aria-hidden="true"><use href="#ic-trash"/></svg>
+        </button>
+      </div>`;
+    frag.appendChild(el);
+  });
+  list.appendChild(frag);
+
+  list.querySelectorAll('.lib-enter-btn').forEach(btn =>
+    btn.addEventListener('click', () => renderLibraryDetail(btn.dataset.id))
+  );
+  list.querySelectorAll('.lib-delete-btn').forEach(btn =>
+    btn.addEventListener('click', async () => {
+      const lib   = allLibraries.find(l => l.id === btn.dataset.id);
+      if (!lib) return;
+      const count = allTemplates.filter(t => t.library_id === lib.id).length;
+      if (!confirm(`Delete "${lib.name}"? Its ${count} prompt${count !== 1 ? 's' : ''} will be moved to My Templates.`)) return;
+      await deleteLibrary(lib.id);
+      await refreshAll();
+    })
+  );
+}
+
+function sortLibraries(libs, sort) {
+  return [...libs].sort((a, b) => {
+    if (sort === 'az')     return a.name.localeCompare(b.name);
+    if (sort === 'za')     return b.name.localeCompare(a.name);
+    if (sort === 'oldest') return new Date(a.created_at) - new Date(b.created_at);
+    return new Date(b.created_at) - new Date(a.created_at);
+  });
+}
+
+// ── Library list search ──────────────────────────────
+document.getElementById('lib-search-input')?.addEventListener('input', e => {
+  tabState.lib.search = e.target.value;
+  document.getElementById('btn-lib-search-clear')?.classList.toggle('hidden', !e.target.value);
+  renderLibraryListPanel();
+});
+
+document.getElementById('btn-lib-search-clear')?.addEventListener('click', () => {
+  tabState.lib.search = '';
+  const input = document.getElementById('lib-search-input');
+  if (input) { input.value = ''; input.focus(); }
+  document.getElementById('btn-lib-search-clear')?.classList.add('hidden');
+  renderLibraryListPanel();
+});
+
+document.getElementById('btn-new-library')?.addEventListener('click', async () => {
+  const name = prompt('New library name:')?.trim();
+  if (!name) return;
+  if (allLibraries.find(l => l.name.toLowerCase() === name.toLowerCase())) {
+    alert('A library with that name already exists.'); return;
+  }
+  const lib = await createLibrary(name);
+  allLibraries.push(lib);
+  renderLibraryListPanel();
+  updateTabCounts();
+});
+
+// ════════════════════════════════════════════════════
+// LIBRARY DETAIL PANEL
+// ════════════════════════════════════════════════════
+
+function renderLibraryDetail(libId) {
+  currentLibraryId = libId;
+  const lib = allLibraries.find(l => l.id === libId);
+  if (!lib) { renderLibraryListPanel(); return; }
+
+  document.getElementById('lib-list-view')?.classList.add('hidden');
+  document.getElementById('lib-detail-view')?.classList.remove('hidden');
+
+  const titleEl = document.getElementById('lib-detail-title');
+  if (titleEl) titleEl.textContent = lib.name;
+
+  renderLibSortControls(libId);
+
+  const libTemplates = allTemplates.filter(t => t.library_id === libId);
+  const allTags      = uniqueTags(libTemplates);
+
+  buildTagFilter('lib-tag-filter', allTags, tabState.lib.detailTags, tag => {
+    if (tag === null) {
+      tabState.lib.detailTags = [];
+    } else {
+      const idx = tabState.lib.detailTags.indexOf(tag);
+      if (idx === -1) tabState.lib.detailTags.push(tag);
+      else tabState.lib.detailTags.splice(idx, 1);
+    }
+    renderLibraryDetail(libId);
+  });
+
+  const filtered = filterTemplates(libTemplates, tabState.lib.detailSearch, tabState.lib.detailTags);
+  showResultCount('lib-result-count', filtered.length, libTemplates.length,
+                  tabState.lib.detailSearch, tabState.lib.detailTags);
+  renderLibraryTemplateCards(filtered, libId);
+}
+
+function renderLibraryTemplateCards(templates, libId) {
+  const list = document.getElementById('lib-template-list');
+  if (!list) return;
+  list.innerHTML = '';
+
+  if (!templates.length) {
+    list.innerHTML = `<div class="empty-state">
+      <div class="empty-state-title">No prompts here</div>
+      <div class="empty-state-hint">Use the button below to add one, or import to this library.</div>
+    </div>`;
+    return;
+  }
+
+  const densityClass = activeDensity === 'cozy' ? '' : 'density-compact';
+  list.className = `scroll-area ${densityClass}`;
+
+  const frag = document.createDocumentFragment();
+  templates.forEach(t => {
+    const cat    = categoryOf(t.category);
+    const card   = document.createElement('div');
+    card.className   = 'template-card';
+    card.dataset.id  = t.id;
+    card.setAttribute('role', 'listitem');
+
+    const preview  = t.body?.split('\n')[0] || '';
+    const badgeHtml = showBadges
+      ? `<span class="cat-badge" style="background:${cat.color}22;border:0.5px solid ${cat.color}55;color:${cat.color}">
+           <span class="cat-badge-dot" style="background:${cat.color}"></span>${escHtml(cat.label)}
+         </span>`
+      : '';
+    const tagsHtml = (t.tags || []).map(tg =>
+      `<span class="conflict-tag">${escHtml(tg)}</span>`
+    ).join('');
+
+    card.innerHTML = `
+      <div class="template-card-inner">
+        <div class="template-card-body">
+          <div class="template-card-title-row">
+            <span class="template-title">${escHtml(t.title)}</span>
+          </div>
+          <div class="template-preview">${escHtml(preview)}</div>
+          <div class="template-card-meta">
+            ${badgeHtml}
+            ${tagsHtml ? `<div class="conflict-tags">${tagsHtml}</div>` : ''}
+          </div>
+        </div>
+        <div class="lib-card-actions">
+          <button type="button"
+                  class="lib-fav-btn icon-btn${t.favorited ? ' fav-active' : ''}"
+                  data-id="${t.id}"
+                  title="${t.favorited ? 'Remove from My Templates' : 'Show in My Templates'}"
+                  aria-label="${t.favorited ? 'Remove from My Templates' : 'Show in My Templates'}">
+            <svg width="14" height="14" aria-hidden="true"><use href="${t.favorited ? '#ic-star' : '#ic-star-outline'}"/></svg>
+          </button>
+          <button type="button" class="template-edit-btn" data-id="${t.id}" aria-label="Edit ${escHtml(t.title)}">
+            <svg width="14" height="14" aria-hidden="true"><use href="#ic-pencil"/></svg>
+          </button>
+        </div>
+      </div>`;
+    frag.appendChild(card);
+  });
+  list.appendChild(frag);
+
+  list.querySelectorAll('.lib-fav-btn').forEach(btn =>
+    btn.addEventListener('click', async e => {
+      e.stopPropagation();
+      await toggleFavourite(btn.dataset.id);
+      allTemplates = await getTemplates();
+      updateTabCounts();
+      renderLibraryDetail(libId);
+    })
+  );
+
+  list.querySelectorAll('.template-card').forEach(card =>
+    card.addEventListener('click', e => {
+      if (e.target.closest('.lib-fav-btn') || e.target.closest('.template-edit-btn')) return;
+      const t = allTemplates.find(x => x.id === card.dataset.id);
+      if (!t) return;
+      if (extractVars(t.body).length === 0) insertTextToHost(t.body);
+      else openUseView(card.dataset.id);
+    })
+  );
+
+  list.querySelectorAll('.template-edit-btn').forEach(btn =>
+    btn.addEventListener('click', e => {
+      e.stopPropagation();
+      openForm(btn.dataset.id);
+    })
+  );
+}
+
+// ── Sort controls ────────────────────────────────────
+const LIB_SORTS = [
+  { id: 'newest', symbol: '↓N', title: 'Newest first' },
+  { id: 'oldest', symbol: '↑N', title: 'Oldest first' },
+  { id: 'az',     symbol: 'Az', title: 'A → Z'        },
+  { id: 'za',     symbol: 'Za', title: 'Z → A'        },
+];
+
+function renderLibSortControls(libId) {
+  const container = document.getElementById('lib-sort-controls');
+  if (!container) return;
+  // Rebuild every time so active class stays in sync
+  container.innerHTML = '';
+  LIB_SORTS.forEach(s => {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = `sort-btn${libSort === s.id ? ' active' : ''}`;
+    btn.dataset.sort = s.id;
+    btn.title = s.title;
+    btn.textContent = s.symbol;
+    btn.addEventListener('click', async () => {
+      libSort = s.id;
+      await updateSettings({ library_sort: libSort });
+      renderLibraryDetail(libId);
+    });
+    container.appendChild(btn);
+  });
+}
+
+// ── Library detail navigation ─────────────────────────
+document.getElementById('lib-detail-search')?.addEventListener('input', e => {
+  tabState.lib.detailSearch = e.target.value;
+  document.getElementById('btn-lib-detail-clear')?.classList.toggle('hidden', !e.target.value);
+  if (currentLibraryId) renderLibraryDetail(currentLibraryId);
+});
+
+document.getElementById('btn-lib-detail-clear')?.addEventListener('click', () => {
+  tabState.lib.detailSearch = '';
+  const input = document.getElementById('lib-detail-search');
+  if (input) { input.value = ''; input.focus(); }
+  document.getElementById('btn-lib-detail-clear')?.classList.add('hidden');
+  if (currentLibraryId) renderLibraryDetail(currentLibraryId);
+});
+
+document.getElementById('btn-back-lib')?.addEventListener('click', () => {
+  currentLibraryId          = null;
+  tabState.lib.detailSearch = '';
+  tabState.lib.detailTags   = [];
+  renderLibraryListPanel();
+});
+
+document.getElementById('btn-new-in-lib')?.addEventListener('click', () => openForm(null, currentLibraryId));
+
+// ════════════════════════════════════════════════════
+// IMPORT TAG CHIP BUILDER
+// ════════════════════════════════════════════════════
+
+let importTagChips = [];
+
+function renderImportTagChips() {
+  const container = document.getElementById('import-tag-chips');
+  if (!container) return;
+  container.innerHTML = '';
+  importTagChips.forEach(tag => {
+    const chip = document.createElement('span');
+    chip.className = 'import-added-tag';
+    chip.innerHTML = `${escHtml(tag)}<button type="button" class="import-tag-remove" aria-label="Remove ${escHtml(tag)}">×</button>`;
+    chip.querySelector('.import-tag-remove').addEventListener('click', () => {
+      importTagChips = importTagChips.filter(t => t !== tag);
+      renderImportTagChips();
+    });
+    container.appendChild(chip);
+  });
+}
+
+function addImportTag(raw) {
+  const tag = raw.trim().toLowerCase();
+  if (!tag || importTagChips.includes(tag)) return;
+  importTagChips.push(tag);
+  renderImportTagChips();
+  const input = document.getElementById('import-tag-input');
+  if (input) input.value = '';
+}
+
+document.getElementById('btn-add-import-tag')?.addEventListener('click', () =>
+  addImportTag(document.getElementById('import-tag-input')?.value || '')
+);
+
+document.getElementById('import-tag-input')?.addEventListener('keydown', e => {
+  if (e.key === 'Enter') { e.preventDefault(); addImportTag(e.target.value); }
+});
+
+// ════════════════════════════════════════════════════
+// IMPORT DESTINATION HANDLERS
+// ════════════════════════════════════════════════════
+
+document.querySelectorAll('input[name="import-dest"]').forEach(radio => {
+  radio.addEventListener('change', () => {
+    document.getElementById('import-new-lib-wrap')?.classList.toggle('hidden', radio.value !== 'new');
+    document.getElementById('import-existing-lib-wrap')?.classList.toggle('hidden', radio.value !== 'existing');
+    document.getElementById('import-lib-name-error')?.classList.add('hidden');
+    updateImportConfirmLabel();
+  });
+});
+
+document.getElementById('import-new-lib-name')?.addEventListener('input', () => {
+  document.getElementById('import-lib-name-error')?.classList.add('hidden');
+  updateImportConfirmLabel();
+});
+
+function updateImportConfirmLabel() {
+  const label   = document.getElementById('btn-confirm-import-label');
+  const destVal = document.querySelector('input[name="import-dest"]:checked')?.value || 'my';
+  const libName = document.getElementById('import-new-lib-name')?.value.trim();
+  const selEl   = document.getElementById('import-existing-lib-select');
+  const selName = selEl?.options[selEl.selectedIndex]?.text || '';
+  const count   = importParsedValid.length;
+
+  let dest = 'My Templates';
+  if (destVal === 'new' && libName)      dest = `"${libName}"`;
+  else if (destVal === 'existing' && selName) dest = `"${selName}"`;
+
+  if (label) label.textContent = `Import ${count} to ${dest}`;
+}
 
 // ── Update check ────────────────────────────────────
 const REPO          = 'trati629/prompt-pocket';

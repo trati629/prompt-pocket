@@ -910,6 +910,34 @@ input, textarea, select { font-family: var(--font-body); }
   pointer-events: none;
 }
 
+/* ── AI Tools setting rows ────────────────────────── */
+.ai-tool-info {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  cursor: default;
+}
+.ai-tool-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  display: inline-block;
+}
+.ai-tool-name { font-size: 13.5px; }
+.ai-tool-soon {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-mute);
+  background: var(--surface-hi);
+  border: 1px solid var(--border-soft);
+  border-radius: 4px;
+  padding: 2px 6px;
+  white-space: nowrap;
+}
+
 /* ── Update notification bar ─────────────────────── */
 .update-bar {
   position: fixed;
@@ -1192,6 +1220,42 @@ body.has-update .sticky-bar { bottom: 28px; }
   color: var(--text-mute);
   border: 0.5px solid var(--border-soft);
   white-space: nowrap;
+}
+
+/* ── Tag filter bar ───────────────────────────────── */
+.tag-filter-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 6px 16px 8px;
+  flex-shrink: 0;
+}
+
+/* Filter chips — same visual language as .conflict-tag in prompt cards */
+.tag-chip {
+  appearance: none;
+  border: 0.5px solid var(--border-soft);
+  border-radius: 999px;
+  background: var(--surface-hi);
+  color: var(--text-mute);
+  font-size: 9.5px;
+  font-family: var(--font-body);
+  font-weight: 500;
+  padding: 3px 9px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.12s, color 0.12s, border-color 0.12s;
+}
+.tag-chip:hover {
+  background: var(--surface-hi);
+  color: var(--text-dim);
+  border-color: var(--border);
+}
+.tag-chip.active {
+  background: var(--accent-glow);
+  color: var(--accent);
+  border-color: rgba(196,169,116,0.45);
+  font-weight: 600;
 }
 
 .conflict-apply-all {

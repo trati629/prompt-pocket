@@ -52,6 +52,15 @@
     <symbol id="ic-download" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
       <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M7 10l5 5 5-5"/><path d="M12 15V3"/>
     </symbol>
+    <symbol id="ic-star" viewBox="0 0 24 24" fill="currentColor">
+      <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
+    </symbol>
+    <symbol id="ic-star-outline" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
+    </symbol>
+    <symbol id="ic-sort" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M3 6h18M7 12h10M11 18h2"/>
+    </symbol>
     <symbol id="ic-upload" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
       <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M17 8l-5-5-5 5"/><path d="M12 3v12"/>
     </symbol>
@@ -68,7 +77,7 @@
   <!-- Selector health banner -->
   <div id="health-banner" class="banner" role="alert"></div>
 
-  <!-- ── View: Main list ────────────────────────────── -->
+  <!-- ── View: Main (My Templates + Libraries) ────── -->
   <div id="view-main" class="view active">
     <header class="pp-header">
       <div class="brandmark" aria-label="Prompt Pocket">
@@ -84,29 +93,90 @@
       </button>
     </header>
 
-    <div class="search-wrap">
-      <div class="search-bar" id="search-bar">
-        <svg width="15" height="15" class="search-icon" aria-hidden="true"><use href="#ic-search"/></svg>
-        <label for="search-input" class="sr-only">Search templates</label>
-        <input type="search" id="search-input" placeholder="Search templates…" autocomplete="off">
-        <button type="button" id="btn-search-clear" class="search-clear hidden" aria-label="Clear search">
-          <svg width="13" height="13" aria-hidden="true"><use href="#ic-x"/></svg>
-        </button>
-      </div>
-    </div>
-
     <div class="tabs-bar" role="tablist">
       <button type="button" class="tab active" data-tab="my" id="tab-my" role="tab" aria-selected="true">
         My Templates <span class="tab-count" id="tab-count-my"></span>
       </button>
-      <button type="button" class="tab" data-tab="libs" id="tab-libs" role="tab" aria-selected="false" disabled title="Coming in Phase 5">
-        Libraries
+      <button type="button" class="tab" data-tab="libs" id="tab-libs" role="tab" aria-selected="false">
+        Libraries <span class="tab-count" id="tab-count-libs"></span>
       </button>
     </div>
 
-    <div id="template-list" class="scroll-area" role="list"></div>
+    <!-- ── My Templates panel ── -->
+    <div id="panel-my" class="tab-panel active">
+      <div class="tab-search-wrap">
+        <div class="search-bar">
+          <svg width="15" height="15" class="search-icon" aria-hidden="true"><use href="#ic-search"/></svg>
+          <label for="search-input" class="sr-only">Search My Templates</label>
+          <input type="search" id="search-input" placeholder="Search templates…" autocomplete="off">
+          <button type="button" id="btn-search-clear" class="search-clear hidden" aria-label="Clear search">
+            <svg width="13" height="13" aria-hidden="true"><use href="#ic-x"/></svg>
+          </button>
+        </div>
+      </div>
+      <div id="my-tag-filter" class="tag-filter-bar" role="group" aria-label="Filter by tag"></div>
+      <div id="my-result-count" class="result-count hidden" aria-live="polite"></div>
+      <div id="template-list" class="scroll-area" role="list"></div>
+    </div>
 
-    <div class="fab-wrap">
+    <!-- ── Libraries panel ── -->
+    <div id="panel-libs" class="tab-panel hidden">
+
+      <!-- Library list view (default) -->
+      <div id="lib-list-view">
+        <div class="tab-search-wrap">
+          <div class="search-bar">
+            <svg width="15" height="15" class="search-icon" aria-hidden="true"><use href="#ic-search"/></svg>
+            <label for="lib-search-input" class="sr-only">Search Libraries</label>
+            <input type="search" id="lib-search-input" placeholder="Search libraries…" autocomplete="off">
+            <button type="button" id="btn-lib-search-clear" class="search-clear hidden" aria-label="Clear">
+              <svg width="13" height="13" aria-hidden="true"><use href="#ic-x"/></svg>
+            </button>
+          </div>
+        </div>
+        <div id="library-list" class="scroll-area lib-list-scroll" role="list"></div>
+        <div class="fab-wrap">
+          <button type="button" id="btn-new-library" class="fab-btn">
+            <svg width="15" height="15" aria-hidden="true"><use href="#ic-plus"/></svg>
+            New Library
+          </button>
+        </div>
+      </div>
+
+      <!-- Library detail view (when a library is open) -->
+      <div id="lib-detail-view" class="hidden">
+        <div class="lib-detail-header">
+          <button type="button" id="btn-back-lib" class="icon-btn back-btn" aria-label="Back to libraries">
+            <svg width="20" height="20" aria-hidden="true"><use href="#ic-back"/></svg>
+          </button>
+          <h2 id="lib-detail-title" class="lib-detail-name"></h2>
+          <div class="lib-sort-controls" role="group" aria-label="Sort order" id="lib-sort-controls"></div>
+        </div>
+        <div class="tab-search-wrap">
+          <div class="search-bar">
+            <svg width="15" height="15" class="search-icon" aria-hidden="true"><use href="#ic-search"/></svg>
+            <label for="lib-detail-search" class="sr-only">Search in library</label>
+            <input type="search" id="lib-detail-search" placeholder="Search in library…" autocomplete="off">
+            <button type="button" id="btn-lib-detail-clear" class="search-clear hidden" aria-label="Clear">
+              <svg width="13" height="13" aria-hidden="true"><use href="#ic-x"/></svg>
+            </button>
+          </div>
+        </div>
+        <div id="lib-tag-filter" class="tag-filter-bar" role="group" aria-label="Filter by tag"></div>
+        <div id="lib-result-count" class="result-count hidden" aria-live="polite"></div>
+        <div id="lib-template-list" class="scroll-area" role="list"></div>
+        <div class="fab-wrap">
+          <button type="button" id="btn-new-in-lib" class="fab-btn">
+            <svg width="15" height="15" aria-hidden="true"><use href="#ic-plus"/></svg>
+            New Template Here
+          </button>
+        </div>
+      </div>
+
+    </div><!-- /panel-libs -->
+
+    <!-- Global FAB for My Templates (hidden when in Libraries) -->
+    <div class="fab-wrap" id="my-fab-wrap">
       <button type="button" id="btn-new-template" class="fab-btn">
         <svg width="15" height="15" aria-hidden="true"><use href="#ic-plus"/></svg>
         New Template
@@ -188,6 +258,27 @@
         <textarea id="template-body" class="field-textarea mono"
                   rows="9"
                   placeholder="Write your prompt here.&#10;Use {{topic}} for things you'll fill in each time."></textarea>
+      </div>
+
+      <!-- Library selector -->
+      <div class="field-group">
+        <label class="field-label" for="template-library">Library</label>
+        <select id="template-library" class="field-input field-select">
+          <option value="">My Templates</option>
+          <!-- Options injected by JS -->
+        </select>
+      </div>
+
+      <!-- Favourite toggle — only relevant when a library is selected -->
+      <div class="field-group hidden" id="form-favourite-row">
+        <label class="setting-info" for="template-favourite">
+          <div class="setting-name">Show in My Templates</div>
+          <div class="setting-hint">Favourite this prompt so it appears in My Templates tab</div>
+        </label>
+        <label class="switch">
+          <input type="checkbox" id="template-favourite">
+          <span class="switch-track" aria-hidden="true"></span>
+        </label>
       </div>
 
       <div id="detected-vars-section" class="field-group hidden">
@@ -275,6 +366,14 @@
         </div>
       </div>
 
+      <!-- ── AI Tools ──────────────────────────────── -->
+      <div class="settings-section">
+        <div class="section-label" id="label-ai-tools">AI Tools</div>
+        <div class="settings-group" id="ai-tools-list" role="group" aria-labelledby="label-ai-tools">
+          <!-- Rendered by JS from AI_TOOLS constant -->
+        </div>
+      </div>
+
       <!-- ── Import Prompts ─────────────────────────── -->
       <div class="settings-section">
         <div class="section-label-row">
@@ -331,12 +430,20 @@
       <div class="settings-section">
         <div class="section-label">Manual backup</div>
         <div class="settings-group">
-          <div class="setting-row divider">
+          <div class="setting-row setting-row-col divider">
             <div class="setting-info">
               <div class="setting-name">Export templates</div>
               <div class="setting-hint">Save as .json file</div>
             </div>
-            <button type="button" id="btn-export-templates" class="btn-ghost-sm">
+            <div class="export-scope-row" role="group" aria-label="Export scope">
+              <label class="export-scope-option">
+                <input type="radio" name="export-scope" value="my" checked> My Templates only
+              </label>
+              <label class="export-scope-option">
+                <input type="radio" name="export-scope" value="all"> All (+ Libraries)
+              </label>
+            </div>
+            <button type="button" id="btn-export-templates" class="btn-ghost full-width btn-centered">
               <svg width="10" height="10" aria-hidden="true"><use href="#ic-download"/></svg>
               Export
             </button>
@@ -377,6 +484,37 @@
     </div>
 
     <div class="scroll-area review-scroll">
+
+      <!-- Import destination -->
+      <div class="settings-section">
+        <div class="section-label" id="import-dest-label">Import to</div>
+        <div class="import-dest-panel" role="group" aria-labelledby="import-dest-label">
+          <label class="import-dest-option">
+            <input type="radio" name="import-dest" id="import-dest-my" value="my" checked>
+            <span class="import-dest-label">My Templates</span>
+          </label>
+          <label class="import-dest-option">
+            <input type="radio" name="import-dest" id="import-dest-new" value="new">
+            <span class="import-dest-label">New Library</span>
+          </label>
+          <div id="import-new-lib-wrap" class="import-new-lib-wrap hidden">
+            <label for="import-new-lib-name" class="sr-only">Library name</label>
+            <input type="text" id="import-new-lib-name" class="field-input"
+                   placeholder="Library name…" autocomplete="off">
+            <p id="import-lib-name-error" class="import-lib-name-error hidden">Name is required and must be unique.</p>
+          </div>
+          <label class="import-dest-option" id="import-dest-existing-option">
+            <input type="radio" name="import-dest" id="import-dest-existing" value="existing">
+            <span class="import-dest-label">Existing Library</span>
+          </label>
+          <div id="import-existing-lib-wrap" class="import-new-lib-wrap hidden">
+            <label for="import-existing-lib-select" class="sr-only">Select library</label>
+            <select id="import-existing-lib-select" class="field-input field-select"></select>
+          </div>
+        </div>
+      </div>
+
+      <!-- Apply to all defaults -->
       <div class="settings-section">
         <div class="section-label" id="import-cat-label">Apply to all (fills gaps only)</div>
         <div class="import-defaults-panel">
@@ -387,9 +525,16 @@
             <p class="import-cat-hint">Leave unselected to keep each prompt's own value.</p>
           </div>
           <div class="field-group">
-            <label class="field-label" for="import-default-tags">Default tags</label>
-            <input type="text" id="import-default-tags" class="field-input"
-                   placeholder="tag1, tag2  (optional, applied where missing)">
+            <div class="field-label" id="import-tags-label">Default tags</div>
+            <div id="import-tag-chips" class="import-tag-chips" role="group" aria-labelledby="import-tags-label"></div>
+            <div class="import-tag-input-row">
+              <label for="import-tag-input" class="sr-only">Add tag</label>
+              <input type="text" id="import-tag-input" class="import-tag-input"
+                     placeholder="Add tag…" autocomplete="off">
+              <button type="button" id="btn-add-import-tag" class="btn-ghost-sm" aria-label="Add tag">
+                <svg width="12" height="12" aria-hidden="true"><use href="#ic-plus"/></svg>
+              </button>
+            </div>
           </div>
         </div>
       </div>

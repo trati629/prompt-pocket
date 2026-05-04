@@ -24,7 +24,10 @@ async function updatePanel(tabId, url) {
   const isSupportedAI =
     url?.includes('chatgpt.com') ||
     url?.includes('chat.openai.com') ||
-    url?.includes('copilot.microsoft.com');
+    url?.includes('copilot.microsoft.com') ||
+    url?.includes('m365.cloud.microsoft') ||
+    url?.includes('gemini.google.com') ||
+    url?.includes('claude.ai');
 
   try {
     const targetPath = isSupportedAI ? 'sidepanel/sidepanel.html' : 'sidepanel/dormant.html';

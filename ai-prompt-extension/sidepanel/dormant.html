@@ -37,8 +37,9 @@
       color: var(--text-dim);
       line-height: 1.5;
       max-width: 240px;
-      margin-bottom: 28px;
+      margin-bottom: 24px;
     }
+    /* Dynamic AI buttons container */
     .dormant-actions {
       display: flex;
       flex-direction: column;
@@ -85,16 +86,11 @@
     </svg>
 
     <div class="dormant-title">Not on a supported AI</div>
-    <p class="dormant-hint">Open ChatGPT or Copilot to start using your prompt templates.</p>
+    <p class="dormant-hint" id="dormant-hint">Navigate to a supported AI to use your prompt templates.</p>
 
-    <div class="dormant-actions">
-      <button type="button" id="btn-open-chatgpt" class="btn-primary full-width">
-        Open ChatGPT
-      </button>
-      <button type="button" id="btn-open-copilot" class="btn-ghost full-width btn-centered">
-        Open Copilot
-      </button>
-    </div>
+    <!-- Dynamic AI launch buttons — rendered by sidepanel.js from enabled_ai_tools setting -->
+    <div class="dormant-actions" id="dormant-ai-buttons" role="list"
+         aria-label="Enabled AI tools"></div>
 
     <hr class="dormant-divider" aria-hidden="true">
 

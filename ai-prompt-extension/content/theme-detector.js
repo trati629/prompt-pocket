@@ -15,18 +15,35 @@ if (!window.__ai_prompts_theme_injected) {
    */
   function detectTheme() {
     const html = document.documentElement;
-    let isDark = false;
-    
-    // ChatGPT uses the 'dark' class on the HTML element or data-theme attribute
-    if (window.location.hostname.includes('chatgpt.com') || window.location.hostname.includes('chat.openai.com')) {
-      isDark = html.classList.contains('dark') || html.getAttribute('data-theme') === 'dark';
-    } 
-    // Copilot uses <html data-theme="dark|light">
-    else if (window.location.hostname.includes('copilot.microsoft.com')) {
-      isDark = html.getAttribute('data-theme') === 'dark';
+    const h = window.location.hostname;
+
+    // ChatGPT — class="dark" or data-theme="dark"
+    if (h.includes('chatgpt.com') || h.includes('chat.openai.com')) {
+      return (html.classList.contains('dark') || html.getAttribute('data-theme') === 'dark')
+        ? 'dark' : 'light';
     }
-    
-    return isDark ? 'dark' : 'light';
+    // Copilot (standard) — data-theme="dark|light"
+    if (h.includes('copilot.microsoft.com')) {
+      return html.getAttribute('data-theme') === 'dark' ? 'dark' : 'light';
+    }
+    // M365 Copilot — data-theme or class-based
+    if (h.includes('m365.cloud.microsoft')) {
+      return (html.getAttribute('data-theme') === 'dark' || html.classList.contains('dark'))
+        ? 'dark' : 'light';
+    }
+    // Gemini — data-theme or body class
+    if (h.includes('gemini.google.com')) {
+      return (html.getAttribute('data-theme') === 'dark' ||
+              document.body?.classList.contains('dark'))
+        ? 'dark' : 'light';
+    }
+    // Claude — html class="dark"
+    if (h.includes('claude.ai')) {
+      return html.classList.contains('dark') ? 'dark' : 'light';
+    }
+
+    // Generic fallback: respect system preference
+    return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
   }
 
   /**
