@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Universal AI Prompt Templates",
-  "version": "0.0.3",
+  "version": "0.1.0",
   "description": "Insert, manage and import prompt templates across supported AI web apps",
   "permissions": [
     "sidePanel",
@@ -45,10 +45,32 @@
         "content/theme-detector.js",
         "content/injector.js",
         "content/selector-canary.js",
-        "content/content.js"
+        "content/content.js",
+        "content/overlay.js"
       ],
       "run_at": "document_idle"
     }
   ],
-  "web_accessible_resources": []
+  "commands": {
+    "toggle-overlay": {
+      "suggested_key": {
+        "default": "Ctrl+Shift+P",
+        "mac": "Command+Shift+P"
+      },
+      "description": "Toggle Prompt Pocket overlay"
+    }
+  },
+  "web_accessible_resources": [
+    {
+      "resources": ["content/overlay.css"],
+      "matches": [
+        "https://chatgpt.com/*",
+        "https://chat.openai.com/*",
+        "https://copilot.microsoft.com/*",
+        "https://m365.cloud.microsoft/*",
+        "https://gemini.google.com/*",
+        "https://claude.ai/*"
+      ]
+    }
+  ]
 }

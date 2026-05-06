@@ -39,11 +39,19 @@ async function readTemplates() {
 
 async function writeTemplates(templates, triggerBackup = true) {
   // Monitor storage quota
+  chrome.storage.sync.getBytesInUse(null, bytes => {
+    if (bytes > 90 * 1024 && typeof window !== 'undefined') {
+      if (!window.sessionStorage.getItem('sync_quota_warned')) {
+        alert("Storage warning: Approaching Chrome Sync limits. Templates will fall back to local storage.");
+        window.sessionStorage.setItem('sync_quota_warned', '1');
+      }
+    }
+  });
   chrome.storage.local.getBytesInUse(null, bytes => {
     if (bytes > 4.5 * 1024 * 1024 && typeof window !== 'undefined') {
-      if (!window.sessionStorage.getItem('quota_warned')) {
-        alert("Storage warning: Approaching 5MB limit. Please export backups and delete unused templates.");
-        window.sessionStorage.setItem('quota_warned', '1');
+      if (!window.sessionStorage.getItem('local_quota_warned')) {
+        alert("Storage warning: Approaching 5MB local limit. Please export backups and delete unused templates.");
+        window.sessionStorage.setItem('local_quota_warned', '1');
       }
     }
   });

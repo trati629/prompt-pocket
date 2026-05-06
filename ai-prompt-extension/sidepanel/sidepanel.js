@@ -40,13 +40,8 @@ const CATEGORIES = [
 ];
 
 // Bundled library packs (Phase 5 will pull these from a remote registry)
-const LIBRARY_PACKS = [
-  { id: 'l1', name: 'Senior Engineer Pack', author: 'ppkt/official', count: 18, installed: true,  hue: '#7AA8D9' },
-  { id: 'l2', name: 'Editorial Toolkit',    author: '@mira.writes',  count: 24, installed: false, hue: '#B689C9' },
-  { id: 'l3', name: 'Founder\'s Inbox',     author: '@hk',           count: 11, installed: false, hue: '#E29B7D' },
-  { id: 'l4', name: 'Academic Research',    author: '@nori-lab',     count: 32, installed: true,  hue: '#7FBF8C' },
-  { id: 'l5', name: 'Daily Journaling',     author: '@quietmornings',count: 9,  installed: false, hue: '#D9B86F' },
-];
+// Mock data removed/commented out until Phase 5 to prevent user confusion (Q1)
+const LIBRARY_PACKS = [];
 
 // ── AI tool definitions ─────────────────────────────
 const AI_TOOLS = [
@@ -178,6 +173,14 @@ async function init() {
     const myCount = allTemplates.filter(t => t.library_id === null).length;
     aboutEl.textContent = `v${chrome.runtime.getManifest().version} · ${myCount} template${myCount !== 1 ? 's' : ''}`;
   }
+
+  // If the overlay's "+ New" button triggered us to open, jump straight to the form
+  chrome.storage.local.get(['pending_overlay_action'], data => {
+    if (data.pending_overlay_action === 'new_template') {
+      chrome.storage.local.remove(['pending_overlay_action']);
+      openForm(null);
+    }
+  });
 
   checkForUpdate();
 }
@@ -1056,6 +1059,9 @@ function updateHealthBanner(healthData) {
     let host = null;
     if (url?.includes('chatgpt.com') || url?.includes('chat.openai.com')) host = 'chatgpt.com';
     else if (url?.includes('copilot.microsoft.com')) host = 'copilot.microsoft.com';
+    else if (url?.includes('m365.cloud.microsoft')) host = 'm365.cloud.microsoft';
+    else if (url?.includes('gemini.google.com')) host = 'gemini.google.com';
+    else if (url?.includes('claude.ai')) host = 'claude.ai';
     if (!host || !healthData[host]) { banner.className = 'banner'; return; }
     const h = healthData[host];
     banner.className = 'banner';
@@ -1087,7 +1093,8 @@ function escHtml(str) {
 
 // Ensures a color value is a safe hex string before injecting into style attributes
 function safeHexColor(color) {
-  return /^#[0-9a-fA-F]{3,8}$/.test(color) ? color : '#888888';
+  // Strictly match exactly 3 or 6 hex digits so appending alpha works
+  return /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(color) ? color : '#888888';
 }
 
 // Guards against JSON prototype pollution: strips __proto__, constructor, prototype keys
@@ -1135,6 +1142,11 @@ const FIELD_ALIASES = {
   category: ['category', 'cat', 'type'],
 };
 
+// Strip invisible/directional control characters that could spoof displayed text
+// Covers: zero-width chars, BOM, LTR/RTL marks, bidi overrides (\u202A-\u202E),
+// bidi isolates (\u2066-\u2069), and soft-hyphen
+const UNSAFE_UNICODE = /[\u00AD\u200B-\u200F\u202A-\u202E\u2066-\u2069\uFEFF]/g;
+
 function resolveField(obj, aliases) {
   for (const alias of aliases) {
     // Exact match
@@ -1169,9 +1181,6 @@ function normaliseRow(raw, rowIndex) {
   if (safeBody === '[object Object]') safeBody = '';
 
   // Strip invisible/directional control characters that could spoof displayed text
-  // Covers: zero-width chars, BOM, LTR/RTL marks, bidi overrides (\u202A-\u202E),
-  // bidi isolates (\u2066-\u2069), and soft-hyphen
-  const UNSAFE_UNICODE = /[\u00AD\u200B-\u200F\u202A-\u202E\u2066-\u2069\uFEFF]/g;
   if (safeTitle) safeTitle = safeTitle.replace(UNSAFE_UNICODE, '');
   if (safeBody)  safeBody  = safeBody.replace(UNSAFE_UNICODE, '');
 

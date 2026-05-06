@@ -106,8 +106,28 @@ chrome.tabs.onUpdated.addListener((tabId, info, tab) => {
  * Message Broker
  * Listens for messages from content scripts and other extension parts.
  */
+// Relay keyboard shortcut command to the active tab's content script
+chrome.commands.onCommand.addListener((command) => {
+  if (command === 'toggle-overlay') {
+    chrome.tabs.query({ active: true, currentWindow: true }, ([tab]) => {
+      if (tab?.id) {
+        chrome.tabs.sendMessage(tab.id, { type: 'TOGGLE_OVERLAY' }).catch(() => {});
+      }
+    });
+  }
+});
+
 chrome.runtime.onMessage.addListener((message, sender, _sendResponse) => {
   if (sender.id !== chrome.runtime.id) return;
+
+  // Open the sidepanel in new-template mode when requested from the overlay
+  if (message.type === 'OPEN_SIDEPANEL_NEW_TEMPLATE') {
+    if (sender.tab?.id) {
+      chrome.sidePanel.open({ tabId: sender.tab.id }).catch(() => {});
+      chrome.storage.local.set({ pending_overlay_action: 'new_template' });
+    }
+    return;
+  }
 
   // Handle selector health reports from content/selector-canary.js
   if (message.type === 'SELECTOR_HEALTH') {
@@ -141,8 +161,7 @@ chrome.runtime.onInstalled.addListener(async () => {
         isAllowedHost(tab.url, 'copilot.microsoft.com') ||
         isAllowedHost(tab.url, 'm365.cloud.microsoft') ||
         isAllowedHost(tab.url, 'gemini.google.com') ||
-        isAllowedHost(tab.url, 'claude.ai') ||
-        isAllowedHost(tab.url, 'grok.com');
+        isAllowedHost(tab.url, 'claude.ai');
       
       if (isSupportedAI && !tab.discarded) {
         try {
@@ -150,9 +169,10 @@ chrome.runtime.onInstalled.addListener(async () => {
             target: { tabId: tab.id },
             files: [
               "content/theme-detector.js",
+              "content/content.js",
               "content/injector.js",
               "content/selector-canary.js",
-              "content/content.js"
+              "content/overlay.js"
             ]
           });
           console.log(`[Universal AI Prompt Templates] Auto-injected content scripts into tab ${tab.id}`);

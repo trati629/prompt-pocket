@@ -76,7 +76,11 @@ if (!window.__ai_prompts_canary_injected) {
     // 'any_theme_match' is true if AT LEAST ONE theme selector worked
     results.any_theme_match = results.theme.some(r => r.matched);
     
-    // Dispatch the report to the background service worker
+    // Dispatch the report to the background service worker if state changed
+    const reportHash = `${results.primary_match}-${results.any_input_match}-${results.any_theme_match}`;
+    if (reportHash === window.__pp_canary_last_hash) return;
+    window.__pp_canary_last_hash = reportHash;
+
     if (!chrome.runtime?.id) {
       canaryObserver?.disconnect();
       return;
