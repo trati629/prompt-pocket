@@ -1,34 +1,37 @@
 [
   {
-    "schema_version": 1,
+    "schema_version": 2,
     "id": "default-1",
     "title": "Explain Like I'm 5",
     "body": "Explain the following topic as if I am 5 years old. Keep it simple, use analogies, and avoid jargon:\n\n",
-    "category": "General",
-    "tags": ["explain", "simple"],
+    "category": "general",
     "source": "user",
+    "library_id": null,
+    "favorited": false,
     "created_at": "2026-05-02T00:00:00Z",
     "modified_at": "2026-05-02T00:00:00Z"
   },
   {
-    "schema_version": 1,
+    "schema_version": 2,
     "id": "default-2",
     "title": "Code Review Assistant",
     "body": "Review the following code snippet. Point out any potential bugs, suggest performance improvements, and note any deviations from best practices. Finally, provide a refactored version:\n\n",
-    "category": "Developer",
-    "tags": ["code", "review"],
+    "category": "developer",
     "source": "user",
+    "library_id": null,
+    "favorited": false,
     "created_at": "2026-05-02T00:00:00Z",
     "modified_at": "2026-05-02T00:00:00Z"
   },
   {
-    "schema_version": 1,
+    "schema_version": 2,
     "id": "default-3",
     "title": "Summarise Article",
     "body": "Please read the following text and provide a concise summary consisting of 3-5 bullet points covering the main arguments:\n\n",
-    "category": "Writing",
-    "tags": ["summary", "reading"],
+    "category": "writing",
     "source": "user",
+    "library_id": null,
+    "favorited": false,
     "created_at": "2026-05-02T00:00:00Z",
     "modified_at": "2026-05-02T00:00:00Z"
   }

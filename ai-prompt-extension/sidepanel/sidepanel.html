@@ -360,8 +360,14 @@
             <label class="setting-info" for="setting-category">
               <div class="setting-name">Default category</div>
             </label>
-            <input type="text" id="setting-category" class="setting-inline-input"
-                   aria-label="Default category" placeholder="General" value="General">
+            <select id="setting-category" class="setting-inline-input" aria-label="Default category">
+              <option value="general">General</option>
+              <option value="developer">Developer</option>
+              <option value="writing">Writing</option>
+              <option value="research">Research</option>
+              <option value="marketing">Marketing</option>
+              <option value="personal">Personal</option>
+            </select>
           </div>
         </div>
       </div>
@@ -400,6 +406,7 @@
         <div class="about-info">
           <div class="about-name">Prompt Pocket</div>
           <div class="about-version" id="about-meta">v1.0.0</div>
+          <div class="about-privacy">Checks GitHub for updates when opened · No personal data is collected or transmitted</div>
         </div>
         <button type="button" id="btn-open-backup" class="btn-ghost-sm">
           <svg width="10" height="10" aria-hidden="true"><use href="#ic-download"/></svg>
@@ -524,18 +531,6 @@
             <div id="import-category-chips" class="chip-grid" role="group" aria-labelledby="import-cat-chips-label"></div>
             <p class="import-cat-hint">Leave unselected to keep each prompt's own value.</p>
           </div>
-          <div class="field-group">
-            <div class="field-label" id="import-tags-label">Default tags</div>
-            <div id="import-tag-chips" class="import-tag-chips" role="group" aria-labelledby="import-tags-label"></div>
-            <div class="import-tag-input-row">
-              <label for="import-tag-input" class="sr-only">Add tag</label>
-              <input type="text" id="import-tag-input" class="import-tag-input"
-                     placeholder="Add tag…" autocomplete="off">
-              <button type="button" id="btn-add-import-tag" class="btn-ghost-sm" aria-label="Add tag">
-                <svg width="12" height="12" aria-hidden="true"><use href="#ic-plus"/></svg>
-              </button>
-            </div>
-          </div>
         </div>
       </div>
 
@@ -629,8 +624,7 @@
   {
     "title":    "My Template",
     "body":     "Explain {{topic}} simply.",
-    "category": "general",
-    "tags":     ["explain", "simple"]
+    "category": "general"
   }
 ]</pre>
         <div class="help-aliases">
@@ -642,20 +636,34 @@
             <span class="alias-accepted">also accepted: prompt, content, text</span>
             <span class="alias-canonical" role="listitem">category</span>
             <span class="alias-accepted">also accepted: cat, type</span>
-            <span class="alias-canonical" role="listitem">tags</span>
-            <span class="alias-accepted">also accepted: tag, labels, keywords</span>
+          </div>
+        </div>
+        <div class="help-aliases">
+          <div class="section-label help-aliases-label">Valid category values</div>
+          <div class="alias-grid" role="list">
+            <span class="alias-canonical" role="listitem">general</span>
+            <span class="alias-accepted">General</span>
+            <span class="alias-canonical" role="listitem">developer</span>
+            <span class="alias-accepted">Developer</span>
+            <span class="alias-canonical" role="listitem">writing</span>
+            <span class="alias-accepted">Writing</span>
+            <span class="alias-canonical" role="listitem">research</span>
+            <span class="alias-accepted">Research</span>
+            <span class="alias-canonical" role="listitem">marketing</span>
+            <span class="alias-accepted">Marketing</span>
+            <span class="alias-canonical" role="listitem">personal</span>
+            <span class="alias-accepted">Personal</span>
           </div>
         </div>
       </div>
 
       <div id="help-content-csv" class="help-content hidden" role="tabpanel" aria-labelledby="help-tab-csv">
-        <pre class="help-code" aria-label="CSV example">title,body,category,tags
-"Code Review","Review {{language}} code.","developer","review,code"
-"Quick Summary","Summarise {{text}}.","general",""</pre>
+        <pre class="help-code" aria-label="CSV example">title,body,category
+"Code Review","Review {{language}} code.","developer"
+"Quick Summary","Summarise {{text}}.","general"</pre>
         <ul class="help-notes">
           <li>Header row required (case-insensitive, aliases accepted)</li>
           <li>Wrap values containing commas in double quotes</li>
-          <li><code>tags</code> cell: comma-separated values inside quotes</li>
           <li>File encoding: UTF-8</li>
         </ul>
       </div>

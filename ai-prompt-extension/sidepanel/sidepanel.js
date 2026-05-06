@@ -26,6 +26,7 @@ import {
   restoreTemplates,
   buildExport,
   parseExportEnvelope,
+  verifyExportIntegrity,
 } from './storage.js';
 
 // ── Category definitions (mirrors design) ──────────
@@ -49,7 +50,7 @@ const LIBRARY_PACKS = [
 
 // ── AI tool definitions ─────────────────────────────
 const AI_TOOLS = [
-  { id: 'chatgpt',      label: 'ChatGPT',      url: 'https://chatgpt.com',                  color: '#10a37f', defaultEnabled: true,  comingSoon: false },
+  { id: 'chatgpt',      label: 'ChatGPT',      url: 'https://chatgpt.com', aliases: ['chat.openai.com'], color: '#10a37f', defaultEnabled: true,  comingSoon: false },
   { id: 'copilot',      label: 'Copilot',      url: 'https://copilot.microsoft.com',         color: '#0078d4', defaultEnabled: true,  comingSoon: false },
   { id: 'm365-copilot', label: 'M365 Copilot', url: 'https://m365.cloud.microsoft/chat',     color: '#0078d4', defaultEnabled: true,  comingSoon: false },
   { id: 'gemini',       label: 'Gemini',       url: 'https://gemini.google.com',             color: '#4285f4', defaultEnabled: false, comingSoon: false },
@@ -77,10 +78,10 @@ let isDormantMode     = false;
 let currentLibraryId  = null;  // library open in detail view
 let libSort           = 'newest'; // 'az'|'za'|'newest'|'oldest'
 
-// Per-tab persisted filter state
+// Per-tab persisted filter state (category-based, not tag-based)
 const tabState = {
-  my:  { search: '', tags: [] },
-  lib: { search: '', tags: [], detailSearch: '', detailTags: [] },
+  my:  { search: '', categories: [] },
+  lib: { search: '', categories: [], detailSearch: '', detailCategories: [] },
 };
 
 const urlParams = new URLSearchParams(window.location.search);
@@ -150,8 +151,8 @@ async function init() {
   libSort       = settings.library_sort || 'newest';
 
   // Restore persisted tab filter state
-  tabState.my.search  = settings.my_tab_search || '';
-  tabState.my.tags    = settings.my_tab_tags   || [];
+  tabState.my.search     = settings.my_tab_search     || '';
+  tabState.my.categories = settings.my_tab_categories || [];
 
   applyThemeOverride(settings.theme_override || 'navy');
   populateSettingsForm(settings);
@@ -208,30 +209,23 @@ function updateTabCounts() {
 }
 
 // ── Filter helpers ───────────────────────────────────
-function filterTemplates(templates, q, activeTags = []) {
+function filterTemplates(templates, q, activeCategories = []) {
   let list = templates;
   if (q) {
     const lq = q.toLowerCase();
     list = list.filter(t =>
       t.title?.toLowerCase().includes(lq) ||
       t.body?.toLowerCase().includes(lq)  ||
-      (t.tags || []).some(tag => tag.toLowerCase().includes(lq)) ||
       categoryOf(t.category).label.toLowerCase().includes(lq)
     );
   }
-  if (activeTags.length > 0) {
-    // OR logic: template must have at least one of the selected tags
+  if (activeCategories.length > 0) {
+    // OR logic: template matches if it belongs to any selected category
     list = list.filter(t =>
-      activeTags.some(at => (t.tags || []).map(x => x.toLowerCase()).includes(at.toLowerCase()))
+      activeCategories.includes((t.category || 'general').toLowerCase())
     );
   }
   return [...list].sort((a, b) => Number(b.pinned) - Number(a.pinned));
-}
-
-function uniqueTags(templates) {
-  const set = new Set();
-  templates.forEach(t => (t.tags || []).forEach(tag => set.add(tag)));
-  return [...set].sort();
 }
 
 let listDelegated = false;
@@ -291,9 +285,10 @@ function renderTemplates(templates) {
     card.setAttribute('role', 'listitem');
 
     const preview = t.body?.split('\n')[0] || '';
+    const cc = safeHexColor(cat.color);
     const badgeHtml = showBadges
-      ? `<span class="cat-badge" style="background:${cat.color}22;border:0.5px solid ${cat.color}55;color:${cat.color}">
-           <span class="cat-badge-dot" style="background:${cat.color}"></span>
+      ? `<span class="cat-badge" style="background:${cc}22;border:0.5px solid ${cc}55;color:${cc}">
+           <span class="cat-badge-dot" style="background:${cc}"></span>
            ${escHtml(cat.label)}
          </span>`
       : '';
@@ -384,8 +379,9 @@ function openUseView(templateId) {
   // Meta
   const cat = categoryOf(t.category);
   const badge = document.getElementById('use-category-badge');
-  badge.style.cssText = `background:${cat.color}22;border:0.5px solid ${cat.color}55;color:${cat.color}`;
-  badge.innerHTML = `<span class="cat-badge-dot" style="background:${cat.color}"></span>${escHtml(cat.label)}`;
+  const uc = safeHexColor(cat.color);
+  badge.style.cssText = `background:${uc}22;border:0.5px solid ${uc}55;color:${uc}`;
+  badge.innerHTML = `<span class="cat-badge-dot" style="background:${uc}"></span>${escHtml(cat.label)}`;
   document.getElementById('use-uses').textContent = `${t.uses || 0} uses`;
 
   // Variables section
@@ -483,17 +479,30 @@ document.getElementById('btn-send-filled')?.addEventListener('click', () => {
   insertTextToHost(text);
 });
 
+function isAllowedHost(tabUrl, allowedHostname) {
+  if (!tabUrl) return false;
+  try {
+    const targetHost = new URL(tabUrl).hostname;
+    return targetHost === allowedHostname || targetHost.endsWith('.' + allowedHostname);
+  } catch(e) {
+    return false;
+  }
+}
+
 // ── Text insertion into AI tab ──────────────────────
 function insertTextToHost(text) {
   chrome.tabs.query({ active: true, currentWindow: true }, tabs => {
     if (!tabs.length) return;
     const tab = tabs[0];
-    const supported = tab.url?.includes('chatgpt.com') ||
-                      tab.url?.includes('chat.openai.com') ||
-                      tab.url?.includes('copilot.microsoft.com');
+    const supported = AI_TOOLS
+      .filter(t => !t.comingSoon)
+      .some(t => {
+        const toolHost = new URL(t.url).hostname;
+        return isAllowedHost(tab.url, toolHost) || (t.aliases || []).some(alias => isAllowedHost(tab.url, alias));
+      });
 
     if (!supported) {
-      alert('Please navigate to ChatGPT or Copilot to insert a template.');
+      alert('Please navigate to a supported AI to insert a template.');
       return;
     }
 
@@ -615,7 +624,7 @@ function initCategoryChips() {
     btn.className = 'cat-chip';
     btn.dataset.id = cat.id;
     btn.dataset.color = cat.color;
-    btn.innerHTML = `<span class="cat-chip-dot" style="width:5px;height:5px;border-radius:50%;background:${cat.color}"></span>${escHtml(cat.label)}`;
+    btn.innerHTML = `<span class="cat-chip-dot" style="width:5px;height:5px;border-radius:50%;background:${safeHexColor(cat.color)}"></span>${escHtml(cat.label)}`;
     btn.addEventListener('click', () => setSelectedCategory(cat.id));
     grid.appendChild(btn);
   });
@@ -681,8 +690,6 @@ document.getElementById('btn-save-template')?.addEventListener('click', async ()
   if (!title || !body) { alert('Title and Body are required.'); return; }
 
   const category   = document.getElementById('template-category')?.value || 'general';
-  const tagsRaw    = document.getElementById('template-tags')?.value || '';
-  const tags       = tagsRaw.split(',').map(s => s.trim()).filter(Boolean);
   const libraryId  = document.getElementById('template-library')?.value || null;
   const favorited  = document.getElementById('template-favourite')?.checked || false;
 
@@ -692,12 +699,11 @@ document.getElementById('btn-save-template')?.addEventListener('click', async ()
       if (existing?.library_id) {
         // Library templates save as NEW in My Templates — confirmed by user
         if (!confirm('Library templates cannot be edited directly.\n\nSave a copy to My Templates?')) return;
-        await addTemplate({ title, body, category, tags, library_id: null, favorited: false });
+        await addTemplate({ title, body, category, library_id: null, favorited: false });
         showToast('Saved as new in My Templates');
       } else {
         const newLibId = libraryId === '' ? null : (libraryId || null);
-        await updateTemplate(currentEditingId, { title, body, category, tags, library_id: newLibId, favorited });
-        // Handle move if library changed
+        await updateTemplate(currentEditingId, { title, body, category, library_id: newLibId, favorited });
         if (newLibId !== existing?.library_id) {
           await moveTemplate(currentEditingId, newLibId);
         }
@@ -705,7 +711,7 @@ document.getElementById('btn-save-template')?.addEventListener('click', async ()
       }
     } else {
       const newLibId = libraryId === '' ? null : (libraryId || null);
-      await addTemplate({ title, body, category, tags, library_id: newLibId, favorited });
+      await addTemplate({ title, body, category, library_id: newLibId, favorited });
       showToast('Template saved');
     }
     await refreshAll();
@@ -788,7 +794,7 @@ function populateSettingsForm(settings) {
   if (themeSelect) themeSelect.value = settings.theme_override || 'navy';
 
   const catInput = document.getElementById('setting-category');
-  if (catInput) catInput.value = settings.default_category || 'General';
+  if (catInput) catInput.value = (settings.default_category || 'general').toLowerCase();
 
   const inlineChk = document.getElementById('setting-inline');
   if (inlineChk) inlineChk.checked = !!settings.inline_overlay_enabled;
@@ -895,7 +901,7 @@ document.getElementById('setting-inline')?.addEventListener('change', async e =>
 });
 
 document.getElementById('setting-category')?.addEventListener('change', async e => {
-  await updateSettings({ default_category: e.target.value.trim() });
+  await updateSettings({ default_category: e.target.value });
 });
 
 // ── Backup & Restore ────────────────────────────────
@@ -903,6 +909,7 @@ document.getElementById('btn-open-backup')?.addEventListener('click', () => swit
 document.getElementById('btn-close-backup')?.addEventListener('click', () => switchView('view-settings'));
 
 document.getElementById('btn-export-templates')?.addEventListener('click', async () => {
+  if (!confirm('Export saves your prompts as a plain-text JSON file with no encryption. Anyone with access to the file can read your templates. Continue?')) return;
   const scopeEl = document.querySelector('input[name="export-scope"]:checked');
   const scope   = scopeEl?.value || 'my';
   const envelope = await buildExport(scope);
@@ -922,10 +929,20 @@ document.getElementById('btn-import-templates')?.addEventListener('click', () =>
 fileImport?.addEventListener('change', e => {
   const file = e.target.files?.[0];
   if (!file) return;
+  if (file.size > 5 * 1024 * 1024) {
+    alert('File is too large (max 5 MB). Please select a smaller backup file.');
+    e.target.value = '';
+    return;
+  }
   const reader = new FileReader();
   reader.onload = async ev => {
     try {
-      const raw = JSON.parse(ev.target.result);
+      const raw = stripPrototypePollution(JSON.parse(ev.target.result));
+      const intact = await verifyExportIntegrity(raw);
+      if (!intact) {
+        alert('Backup file integrity check failed — the file may have been modified or corrupted. Import cancelled.');
+        return;
+      }
       const { templates: importedTemplates, libraries: importedLibs } = parseExportEnvelope(raw);
       const current = await getTemplates();
       const merged  = [...current];
@@ -993,6 +1010,8 @@ async function renderAutoBackups() {
 function applyThemeOverride(override) {
   if (override === 'parchment') {
     document.documentElement.setAttribute('data-theme', 'light');
+  } else if (override === 'ink') {
+    document.documentElement.setAttribute('data-theme', 'ink');
   } else if (override === 'follow') {
     chrome.storage.local.get(['extension_theme'], result => {
       if (result.extension_theme === 'light') {
@@ -1002,11 +1021,13 @@ function applyThemeOverride(override) {
       }
     });
   } else {
+    // navy (default) — no data-theme attribute needed
     document.documentElement.removeAttribute('data-theme');
   }
 }
 
-chrome.runtime.onMessage.addListener(message => {
+chrome.runtime.onMessage.addListener((message, sender) => {
+  if (sender.id !== chrome.runtime.id) return;
   if (message.type === 'THEME_CHANGE') {
     chrome.storage.local.get(['settings'], data => {
       const override = data.settings?.theme_override || 'navy';
@@ -1064,6 +1085,25 @@ function escHtml(str) {
     .replace(/"/g, '&quot;');
 }
 
+// Ensures a color value is a safe hex string before injecting into style attributes
+function safeHexColor(color) {
+  return /^#[0-9a-fA-F]{3,8}$/.test(color) ? color : '#888888';
+}
+
+// Guards against JSON prototype pollution: strips __proto__, constructor, prototype keys
+function stripPrototypePollution(obj) {
+  if (Array.isArray(obj)) return obj.map(stripPrototypePollution);
+  if (obj && typeof obj === 'object') {
+    const clean = {};
+    for (const key of Object.keys(obj)) {
+      if (key === '__proto__' || key === 'constructor' || key === 'prototype') continue;
+      clean[key] = stripPrototypePollution(obj[key]);
+    }
+    return clean;
+  }
+  return obj;
+}
+
 function relativeTime(iso) {
   if (!iso) return '';
   const diff = Date.now() - new Date(iso).getTime();
@@ -1093,7 +1133,6 @@ const FIELD_ALIASES = {
   title:    ['title', 'name'],
   body:     ['body', 'prompt', 'content', 'text'],
   category: ['category', 'cat', 'type'],
-  tags:     ['tags', 'tag', 'labels', 'keywords'],
 };
 
 function resolveField(obj, aliases) {
@@ -1113,76 +1152,85 @@ function normaliseRow(raw, rowIndex) {
   const title    = resolveField(raw, FIELD_ALIASES.title);
   const body     = resolveField(raw, FIELD_ALIASES.body);
   let   category = resolveField(raw, FIELD_ALIASES.category);
-  let   tags     = resolveField(raw, FIELD_ALIASES.tags);
 
-  // Normalise category to a known id
+  // Normalise category to a known id — handles capitalisation and label matching
   if (category) {
-    const slug = String(category).toLowerCase().trim();
-    const exact = CATEGORIES.find(c => c.id === slug);
+    const slug    = String(category).toLowerCase().trim();
+    const exact   = CATEGORIES.find(c => c.id === slug);
     const byLabel = CATEGORIES.find(c => c.label.toLowerCase() === slug);
     category = (exact || byLabel)?.id || undefined;
   }
 
-  // Normalise tags to string[]
-  if (typeof tags === 'string') {
-    tags = tags.split(',').map(t => t.trim()).filter(Boolean);
-  } else if (!Array.isArray(tags)) {
-    tags = [];
-  } else {
-    tags = tags.map(String).filter(Boolean);
-  }
+  let safeTitle = title != null ? String(title).trim() : '';
+  let safeBody  = body != null ? String(body).trim() : '';
+
+  // Catch stringified objects
+  if (safeTitle === '[object Object]') safeTitle = 'Untitled';
+  if (safeBody === '[object Object]') safeBody = '';
+
+  // Strip invisible/directional control characters that could spoof displayed text
+  // Covers: zero-width chars, BOM, LTR/RTL marks, bidi overrides (\u202A-\u202E),
+  // bidi isolates (\u2066-\u2069), and soft-hyphen
+  const UNSAFE_UNICODE = /[\u00AD\u200B-\u200F\u202A-\u202E\u2066-\u2069\uFEFF]/g;
+  if (safeTitle) safeTitle = safeTitle.replace(UNSAFE_UNICODE, '');
+  if (safeBody)  safeBody  = safeBody.replace(UNSAFE_UNICODE, '');
 
   return {
-    _row: rowIndex,
-    title:    typeof title === 'string' ? title.trim() : title,
-    body:     typeof body  === 'string' ? body.trim()  : body,
+    _row:     rowIndex,
+    title:    safeTitle,
+    body:     safeBody,
     category: category || undefined,
-    tags,
   };
 }
 
 // ── Parsers ─────────────────────────────────────────
 function parseImportJSON(text) {
-  const data = JSON.parse(text); // throws on bad JSON
+  const parsed = JSON.parse(text); // throws on bad JSON
+  const data = stripPrototypePollution(parsed);
   if (!Array.isArray(data)) throw new Error('JSON must be an array of objects.');
   if (data.length === 0)    throw new Error('JSON array is empty — nothing to import.');
   return data.map((item, i) => normaliseRow(item || {}, i + 1));
 }
 
 function parseImportCSV(text) {
-  const lines = text.trim().split(/\r?\n/);
-  if (lines.length < 2) throw new Error('CSV needs a header row plus at least one data row.');
-
-  const headers = splitCSVLine(lines[0]).map(h => h.toLowerCase().trim());
-  if (headers.length === 0) throw new Error('CSV header row is empty.');
-
-  return lines.slice(1)
-    .filter(l => l.trim()) // skip blank lines
-    .map((line, i) => {
-      const vals = splitCSVLine(line);
-      const raw  = Object.fromEntries(headers.map((h, idx) => [h, vals[idx] ?? '']));
-      return normaliseRow(raw, i + 2); // +2: row 1 is header
-    });
-}
-
-function splitCSVLine(line) {
-  const cells = [];
-  let cur = '';
+  const rows = [];
+  let curCell = '';
+  let row = [];
   let inQ = false;
-  for (let i = 0; i < line.length; i++) {
-    const c = line[i];
+  
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
     if (c === '"') {
-      if (inQ && line[i + 1] === '"') { cur += '"'; i++; } // escaped quote
+      if (inQ && text[i + 1] === '"') { curCell += '"'; i++; } // escaped quote
       else inQ = !inQ;
     } else if (c === ',' && !inQ) {
-      cells.push(cur);
-      cur = '';
+      row.push(curCell);
+      curCell = '';
+    } else if ((c === '\n' || c === '\r') && !inQ) {
+      if (c === '\r' && text[i + 1] === '\n') i++; // skip \n of \r\n
+      row.push(curCell);
+      if (row.some(cell => cell.trim() !== '')) rows.push(row); // skip blank rows
+      row = [];
+      curCell = '';
     } else {
-      cur += c;
+      curCell += c;
     }
   }
-  cells.push(cur);
-  return cells;
+  // push last cell and row if missing trailing newline
+  if (curCell || row.length > 0) {
+    row.push(curCell);
+    if (row.some(cell => cell.trim() !== '')) rows.push(row);
+  }
+
+  if (rows.length < 2) throw new Error('CSV needs a header row plus at least one data row.');
+
+  const headers = rows[0].map(h => h.toLowerCase().trim());
+  if (headers.length === 0) throw new Error('CSV header row is empty.');
+
+  return rows.slice(1).map((vals, i) => {
+    const raw = Object.fromEntries(headers.map((h, idx) => [h, vals[idx] ?? '']));
+    return normaliseRow(raw, i + 2); // +2: row 1 is header
+  });
 }
 
 function detectFormat(filename) {
@@ -1209,7 +1257,6 @@ function applyImportDefaults(rows, defaults) {
   return rows.map(row => ({
     ...row,
     category: row.category || defaults.category || 'general',
-    tags:     (row.tags?.length ? row.tags : (defaults.tags || [])),
   }));
 }
 
@@ -1242,6 +1289,11 @@ document.getElementById('file-bulk-import')?.addEventListener('change', e => {
   const fmt = detectFormat(file.name);
   if (!fmt) {
     showImportParseError('Unrecognised file type. Please use a .json or .csv file.');
+    return;
+  }
+
+  if (file.size > 5 * 1024 * 1024) {
+    showImportParseError('File is too large (max 5 MB). Please split into smaller files.');
     return;
   }
 
@@ -1294,10 +1346,6 @@ function openImportReview(valid, invalid) {
   document.getElementById('import-default-category').value = '';
   initImportCategoryChips();
 
-  // Reset tag chips
-  importTagChips = [];
-  renderImportTagChips();
-
   // Reset destination to My Templates
   const myRadio = document.getElementById('import-dest-my');
   if (myRadio) myRadio.checked = true;
@@ -1339,7 +1387,7 @@ function initImportCategoryChips() {
     btn.className = 'cat-chip';
     btn.dataset.id = cat.id;
     btn.dataset.color = cat.color;
-    btn.innerHTML = `<span style="width:5px;height:5px;border-radius:50%;background:${cat.color}"></span>${escHtml(cat.label)}`;
+    btn.innerHTML = `<span style="width:5px;height:5px;border-radius:50%;background:${safeHexColor(cat.color)}"></span>${escHtml(cat.label)}`;
     btn.addEventListener('click', () => setImportDefaultCategory(cat.id));
     grid.appendChild(btn);
   });
@@ -1365,14 +1413,10 @@ function renderImportValidList(rows) {
   const frag = document.createDocumentFragment();
   rows.forEach(row => {
     const cat = categoryOf(row.category);
-    const badgeHtml = row.category
-      ? `<span class="cat-badge" style="background:${cat.color}22;border:0.5px solid ${cat.color}55;color:${cat.color}">
-           <span class="cat-badge-dot" style="background:${cat.color}"></span>${escHtml(cat.label)}
-         </span>`
-      : '';
-    const tagsHtml = (row.tags || []).length
-      ? row.tags.map(t => `<span class="conflict-tag">${escHtml(t)}</span>`).join('')
-      : '';
+    const ic = safeHexColor(cat.color);
+    const badgeHtml = `<span class="cat-badge" style="background:${ic}22;border:0.5px solid ${ic}55;color:${ic}">
+           <span class="cat-badge-dot" style="background:${ic}"></span>${escHtml(cat.label)}
+         </span>`;
 
     const el = document.createElement('div');
     el.className = 'import-row-valid';
@@ -1381,10 +1425,7 @@ function renderImportValidList(rows) {
       <span class="import-row-valid-num">${row._row}</span>
       <div class="import-row-valid-body">
         <div class="import-row-title">${escHtml(row.title)}</div>
-        <div class="import-row-meta">
-          ${badgeHtml}
-          ${tagsHtml ? `<div class="conflict-tags">${tagsHtml}</div>` : ''}
-        </div>
+        <div class="import-row-meta">${badgeHtml}</div>
         <div class="import-row-preview">${escHtml((row.body || '').substring(0, 50))}${(row.body || '').length > 50 ? '…' : ''}</div>
       </div>`;
     frag.appendChild(el);
@@ -1441,10 +1482,8 @@ document.getElementById('btn-confirm-import')?.addEventListener('click', async (
     targetLibraryId = document.getElementById('import-existing-lib-select')?.value || null;
   }
 
-  const defaultCat  = document.getElementById('import-default-category')?.value || '';
-  const defaultTags = importTagChips.slice(); // built by tag chip builder
-
-  const withDefaults = applyImportDefaults(importParsedValid, { category: defaultCat, tags: defaultTags });
+  const defaultCat = document.getElementById('import-default-category')?.value || '';
+  const withDefaults = applyImportDefaults(importParsedValid, { category: defaultCat });
   await runImport(withDefaults, targetLibraryId);
 });
 
@@ -1462,8 +1501,8 @@ async function runImport(rows, targetLibraryId = null) {
   let imported = 0, skipped = 0;
 
   for (const row of clean) {
-    await addTemplate({ title: row.title, body: row.body, category: row.category,
-                        tags: row.tags, library_id: targetLibraryId });
+    await addTemplate({ title: row.title, body: row.body,
+                        category: row.category, library_id: targetLibraryId });
     imported++;
   }
 
@@ -1475,13 +1514,12 @@ async function runImport(rows, targetLibraryId = null) {
       } else if (r.choice === 'overwrite') {
         await updateTemplate(r.existing.id, {
           title: r.incoming.title, body: r.incoming.body,
-          category: r.incoming.category, tags: r.incoming.tags,
+          category: r.incoming.category,
         });
         imported++;
       } else {
         await addTemplate({ title: r.incoming.title, body: r.incoming.body,
-                            category: r.incoming.category, tags: r.incoming.tags,
-                            library_id: targetLibraryId });
+                            category: r.incoming.category, library_id: targetLibraryId });
         imported++;
       }
     }
@@ -1543,15 +1581,15 @@ function showConflictModal(conflict, remaining, onChoice) {
     document.getElementById(`conflict-${prefix}-body`).textContent  =
       (t.body || '').substring(0, 30) + ((t.body || '').length > 30 ? '…' : '');
 
-    const cat    = categoryOf(t.category);
-    const catEl  = document.getElementById(`conflict-${prefix}-cat`);
-    catEl.style.cssText = `background:${cat.color}22;border:0.5px solid ${cat.color}55;color:${cat.color}`;
-    catEl.innerHTML     = `<span class="cat-badge-dot" style="background:${cat.color}"></span>${escHtml(cat.label)}`;
+    const cat   = categoryOf(t.category);
+    const catEl = document.getElementById(`conflict-${prefix}-cat`);
+    const sc = safeHexColor(cat.color);
+    catEl.style.cssText = `background:${sc}22;border:0.5px solid ${sc}55;color:${sc}`;
+    catEl.innerHTML     = `<span class="cat-badge-dot" style="background:${sc}"></span>${escHtml(cat.label)}`;
 
+    // Tags removed — category is the sole classifier
     const tagsEl = document.getElementById(`conflict-${prefix}-tags`);
-    tagsEl.innerHTML = (t.tags || [])
-      .map(tag => `<span class="conflict-tag">${escHtml(tag)}</span>`)
-      .join('');
+    if (tagsEl) tagsEl.innerHTML = '';
   }
 
   populateSide('existing', conflict.existing);
@@ -1636,14 +1674,14 @@ function initAIToolsSettings(storedList) {
       // Greyed out with a "Soon" badge — no toggle
       row.innerHTML = `
         <div class="setting-info ai-tool-info">
-          <span class="ai-tool-dot" style="background:${tool.color}"></span>
+          <span class="ai-tool-dot" style="background:${safeHexColor(tool.color)}"></span>
           <span class="setting-name ai-tool-name" style="color:var(--text-mute)">${escHtml(tool.label)}</span>
         </div>
         <span class="ai-tool-soon">W.P.F.</span>`;
     } else {
       row.innerHTML = `
         <label class="setting-info ai-tool-info" for="ai-tool-${tool.id}">
-          <span class="ai-tool-dot" style="background:${tool.color}"></span>
+          <span class="ai-tool-dot" style="background:${safeHexColor(tool.color)}"></span>
           <span class="setting-name ai-tool-name">${escHtml(tool.label)}</span>
         </label>
         <label class="switch">
@@ -1688,7 +1726,7 @@ function renderDormantButtons(storedList) {
     btn.setAttribute('role', 'listitem');
     btn.className = idx === 0 ? 'btn-primary full-width' : 'btn-ghost full-width btn-centered';
     btn.innerHTML = `
-      <span class="ai-tool-dot" style="background:${tool.color};width:8px;height:8px;border-radius:50%;flex-shrink:0"></span>
+      <span class="ai-tool-dot" style="background:${safeHexColor(tool.color)};width:8px;height:8px;border-radius:50%;flex-shrink:0"></span>
       Open ${escHtml(tool.label)}`;
     btn.addEventListener('click', () => chrome.tabs.create({ url: tool.url }));
     container.appendChild(btn);
@@ -1710,47 +1748,62 @@ function renderMyTemplatesPanel() {
   const favourited  = allTemplates.filter(t => t.library_id !== null && t.favorited);
   const combined    = [...myTemplates, ...favourited];
 
-  const allTags = uniqueTags(combined);
-  buildTagFilter('my-tag-filter', allTags, tabState.my.tags, tag => {
-    if (tag === null) {
-      tabState.my.tags = [];
+  buildCategoryFilter('my-tag-filter', combined, tabState.my.categories, catId => {
+    if (catId === null) {
+      tabState.my.categories = [];
     } else {
-      const idx = tabState.my.tags.indexOf(tag);
-      if (idx === -1) tabState.my.tags.push(tag);
-      else tabState.my.tags.splice(idx, 1);
+      const idx = tabState.my.categories.indexOf(catId);
+      if (idx === -1) tabState.my.categories.push(catId);
+      else tabState.my.categories.splice(idx, 1);
     }
-    updateSettings({ my_tab_tags: tabState.my.tags });
+    updateSettings({ my_tab_categories: tabState.my.categories });
     renderMyTemplatesPanel();
   });
 
-  const filtered = filterTemplates(combined, tabState.my.search, tabState.my.tags);
-  showResultCount('my-result-count', filtered.length, combined.length, tabState.my.search, tabState.my.tags);
+  const filtered = filterTemplates(combined, tabState.my.search, tabState.my.categories);
+  showResultCount('my-result-count', filtered.length, combined.length, tabState.my.search, tabState.my.categories);
   renderTemplates(filtered);
 }
 
 // ════════════════════════════════════════════════════
-// SHARED TAG FILTER
+// SHARED CATEGORY FILTER
 // ════════════════════════════════════════════════════
 
-function buildTagFilter(containerId, allTags, activeTags, onToggle) {
+/**
+ * Renders category filter chips into a container.
+ * Only shows categories that have at least one template in the current set.
+ * Chips use the category's brand colour when active — matching the badges on cards.
+ */
+function buildCategoryFilter(containerId, templates, activeCategories, onToggle) {
   const container = document.getElementById(containerId);
   if (!container) return;
   container.innerHTML = '';
-  if (!allTags.length) return;
 
+  const usedIds  = new Set(templates.map(t => (t.category || 'general').toLowerCase()));
+  const usedCats = CATEGORIES.filter(c => usedIds.has(c.id));
+  if (!usedCats.length) return;
+
+  // "All" chip
   const allChip = document.createElement('button');
   allChip.type = 'button';
-  allChip.className = `tag-chip${activeTags.length === 0 ? ' active' : ''}`;
+  allChip.className = `tag-chip${activeCategories.length === 0 ? ' active' : ''}`;
   allChip.textContent = 'All';
   allChip.addEventListener('click', () => onToggle(null));
   container.appendChild(allChip);
 
-  allTags.forEach(tag => {
+  usedCats.forEach(cat => {
+    const isActive = activeCategories.includes(cat.id);
     const btn = document.createElement('button');
     btn.type = 'button';
-    btn.className = `tag-chip${activeTags.includes(tag) ? ' active' : ''}`;
-    btn.textContent = tag;
-    btn.addEventListener('click', () => onToggle(tag));
+    btn.className = `tag-chip${isActive ? ' active' : ''}`;
+    // Active: use category colour (matches the badge on the card)
+    const fc = safeHexColor(cat.color);
+    if (isActive) {
+      btn.style.cssText = `background:${fc}22;color:${fc};border-color:${fc}55;font-weight:600`;
+    }
+    btn.innerHTML = `<span style="width:5px;height:5px;border-radius:50%;background:${fc};
+      display:inline-block;margin-right:5px;flex-shrink:0;vertical-align:middle"></span>${escHtml(cat.label)}`;
+    btn.addEventListener('click', () => onToggle(cat.id));
     container.appendChild(btn);
   });
 }
@@ -1884,22 +1937,21 @@ function renderLibraryDetail(libId) {
   renderLibSortControls(libId);
 
   const libTemplates = allTemplates.filter(t => t.library_id === libId);
-  const allTags      = uniqueTags(libTemplates);
 
-  buildTagFilter('lib-tag-filter', allTags, tabState.lib.detailTags, tag => {
-    if (tag === null) {
-      tabState.lib.detailTags = [];
+  buildCategoryFilter('lib-tag-filter', libTemplates, tabState.lib.detailCategories, catId => {
+    if (catId === null) {
+      tabState.lib.detailCategories = [];
     } else {
-      const idx = tabState.lib.detailTags.indexOf(tag);
-      if (idx === -1) tabState.lib.detailTags.push(tag);
-      else tabState.lib.detailTags.splice(idx, 1);
+      const idx = tabState.lib.detailCategories.indexOf(catId);
+      if (idx === -1) tabState.lib.detailCategories.push(catId);
+      else tabState.lib.detailCategories.splice(idx, 1);
     }
     renderLibraryDetail(libId);
   });
 
-  const filtered = filterTemplates(libTemplates, tabState.lib.detailSearch, tabState.lib.detailTags);
+  const filtered = filterTemplates(libTemplates, tabState.lib.detailSearch, tabState.lib.detailCategories);
   showResultCount('lib-result-count', filtered.length, libTemplates.length,
-                  tabState.lib.detailSearch, tabState.lib.detailTags);
+                  tabState.lib.detailSearch, tabState.lib.detailCategories);
   renderLibraryTemplateCards(filtered, libId);
 }
 
@@ -1928,15 +1980,12 @@ function renderLibraryTemplateCards(templates, libId) {
     card.setAttribute('role', 'listitem');
 
     const preview  = t.body?.split('\n')[0] || '';
+    const lc = safeHexColor(cat.color);
     const badgeHtml = showBadges
-      ? `<span class="cat-badge" style="background:${cat.color}22;border:0.5px solid ${cat.color}55;color:${cat.color}">
-           <span class="cat-badge-dot" style="background:${cat.color}"></span>${escHtml(cat.label)}
+      ? `<span class="cat-badge" style="background:${lc}22;border:0.5px solid ${lc}55;color:${lc}">
+           <span class="cat-badge-dot" style="background:${lc}"></span>${escHtml(cat.label)}
          </span>`
       : '';
-    const tagsHtml = (t.tags || []).map(tg =>
-      `<span class="conflict-tag">${escHtml(tg)}</span>`
-    ).join('');
-
     card.innerHTML = `
       <div class="template-card-inner">
         <div class="template-card-body">
@@ -1946,7 +1995,6 @@ function renderLibraryTemplateCards(templates, libId) {
           <div class="template-preview">${escHtml(preview)}</div>
           <div class="template-card-meta">
             ${badgeHtml}
-            ${tagsHtml ? `<div class="conflict-tags">${tagsHtml}</div>` : ''}
           </div>
         </div>
         <div class="lib-card-actions">
@@ -2047,44 +2095,7 @@ document.getElementById('btn-back-lib')?.addEventListener('click', () => {
 
 document.getElementById('btn-new-in-lib')?.addEventListener('click', () => openForm(null, currentLibraryId));
 
-// ════════════════════════════════════════════════════
-// IMPORT TAG CHIP BUILDER
-// ════════════════════════════════════════════════════
-
-let importTagChips = [];
-
-function renderImportTagChips() {
-  const container = document.getElementById('import-tag-chips');
-  if (!container) return;
-  container.innerHTML = '';
-  importTagChips.forEach(tag => {
-    const chip = document.createElement('span');
-    chip.className = 'import-added-tag';
-    chip.innerHTML = `${escHtml(tag)}<button type="button" class="import-tag-remove" aria-label="Remove ${escHtml(tag)}">×</button>`;
-    chip.querySelector('.import-tag-remove').addEventListener('click', () => {
-      importTagChips = importTagChips.filter(t => t !== tag);
-      renderImportTagChips();
-    });
-    container.appendChild(chip);
-  });
-}
-
-function addImportTag(raw) {
-  const tag = raw.trim().toLowerCase();
-  if (!tag || importTagChips.includes(tag)) return;
-  importTagChips.push(tag);
-  renderImportTagChips();
-  const input = document.getElementById('import-tag-input');
-  if (input) input.value = '';
-}
-
-document.getElementById('btn-add-import-tag')?.addEventListener('click', () =>
-  addImportTag(document.getElementById('import-tag-input')?.value || '')
-);
-
-document.getElementById('import-tag-input')?.addEventListener('keydown', e => {
-  if (e.key === 'Enter') { e.preventDefault(); addImportTag(e.target.value); }
-});
+// (import tag chip builder removed — category is used for classification instead)
 
 // ════════════════════════════════════════════════════
 // IMPORT DESTINATION HANDLERS
@@ -2183,8 +2194,13 @@ function showUpdateBar(version, url) {
   const link  = document.getElementById('update-bar-link');
   if (!bar || !label || !link) return;
 
+  // Only allow https: links — guard against a tampered API response with javascript: URI
+  const safeUrl = typeof url === 'string' && url.startsWith('https://')
+    ? url
+    : `https://github.com/${REPO}/releases/latest`;
+
   label.textContent = `v${version} available`;
-  link.href = url;
+  link.href = safeUrl;
   bar.classList.remove('hidden');
   document.body.classList.add('has-update');
 }

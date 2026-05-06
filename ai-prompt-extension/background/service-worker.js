@@ -15,6 +15,19 @@ chrome.sidePanel
   .catch(console.error);
 
 /**
+ * Safely determines if a URL matches an allowed hostname.
+ */
+function isAllowedHost(tabUrl, allowedHostname) {
+  if (!tabUrl) return false;
+  try {
+    const targetHost = new URL(tabUrl).hostname;
+    return targetHost === allowedHostname || targetHost.endsWith('.' + allowedHostname);
+  } catch(e) {
+    return false;
+  }
+}
+
+/**
  * Updates the side panel and icon state for a given tab.
  * @param {number} tabId - The ID of the tab to update.
  * @param {string} url - The URL of the tab to check if it's a supported AI.
@@ -22,12 +35,13 @@ chrome.sidePanel
 async function updatePanel(tabId, url) {
   // Check if the current URL matches one of our supported AI platforms
   const isSupportedAI =
-    url?.includes('chatgpt.com') ||
-    url?.includes('chat.openai.com') ||
-    url?.includes('copilot.microsoft.com') ||
-    url?.includes('m365.cloud.microsoft') ||
-    url?.includes('gemini.google.com') ||
-    url?.includes('claude.ai');
+    isAllowedHost(url, 'chatgpt.com') ||
+    isAllowedHost(url, 'chat.openai.com') ||
+    isAllowedHost(url, 'copilot.microsoft.com') ||
+    isAllowedHost(url, 'm365.cloud.microsoft') ||
+    isAllowedHost(url, 'gemini.google.com') ||
+    isAllowedHost(url, 'claude.ai') ||
+    isAllowedHost(url, 'grok.com');
 
   try {
     const targetPath = isSupportedAI ? 'sidepanel/sidepanel.html' : 'sidepanel/dormant.html';
@@ -92,7 +106,9 @@ chrome.tabs.onUpdated.addListener((tabId, info, tab) => {
  * Message Broker
  * Listens for messages from content scripts and other extension parts.
  */
-chrome.runtime.onMessage.addListener((message, _sender, _sendResponse) => {
+chrome.runtime.onMessage.addListener((message, sender, _sendResponse) => {
+  if (sender.id !== chrome.runtime.id) return;
+
   // Handle selector health reports from content/selector-canary.js
   if (message.type === 'SELECTOR_HEALTH') {
     // Store the health result in local storage keyed by the host
@@ -119,7 +135,14 @@ chrome.runtime.onInstalled.addListener(async () => {
       }
       
       // 2. Auto-inject content scripts into supported AI tabs
-      const isSupportedAI = tab.url?.includes('chatgpt.com') || tab.url?.includes('chat.openai.com') || tab.url?.includes('copilot.microsoft.com');
+      const isSupportedAI =
+        isAllowedHost(tab.url, 'chatgpt.com') ||
+        isAllowedHost(tab.url, 'chat.openai.com') ||
+        isAllowedHost(tab.url, 'copilot.microsoft.com') ||
+        isAllowedHost(tab.url, 'm365.cloud.microsoft') ||
+        isAllowedHost(tab.url, 'gemini.google.com') ||
+        isAllowedHost(tab.url, 'claude.ai') ||
+        isAllowedHost(tab.url, 'grok.com');
       
       if (isSupportedAI && !tab.discarded) {
         try {

@@ -38,6 +38,15 @@ async function readTemplates() {
 }
 
 async function writeTemplates(templates, triggerBackup = true) {
+  // Monitor storage quota
+  chrome.storage.local.getBytesInUse(null, bytes => {
+    if (bytes > 4.5 * 1024 * 1024 && typeof window !== 'undefined') {
+      if (!window.sessionStorage.getItem('quota_warned')) {
+        alert("Storage warning: Approaching 5MB limit. Please export backups and delete unused templates.");
+        window.sessionStorage.setItem('quota_warned', '1');
+      }
+    }
+  });
   if (triggerBackup) await createAutoBackup();
   return new Promise((resolve, reject) => {
     chrome.storage.sync.set({ [SYNC_KEY]: templates }, () => {
@@ -133,6 +142,8 @@ export async function getFavouritedTemplates() {
 // ── Template CRUD ────────────────────────────────────
 
 export async function addTemplate(templateData) {
+  if (templateData.title && templateData.title.length > 500) templateData.title = templateData.title.substring(0, 500);
+  if (templateData.body && templateData.body.length > 100000) templateData.body = templateData.body.substring(0, 100000);
   const templates = await getTemplates();
   const newT = {
     schema_version: CURRENT_SCHEMA,
@@ -150,6 +161,8 @@ export async function addTemplate(templateData) {
 }
 
 export async function updateTemplate(id, templateData) {
+  if (templateData.title && templateData.title.length > 500) templateData.title = templateData.title.substring(0, 500);
+  if (templateData.body && templateData.body.length > 100000) templateData.body = templateData.body.substring(0, 100000);
   const templates = await getTemplates();
   const idx = templates.findIndex(t => t.id === id);
   if (idx === -1) throw new Error(`Template ${id} not found.`);
@@ -249,7 +262,7 @@ export async function getSettings() {
         enabled_ai_tools:        ['chatgpt', 'copilot', 'm365-copilot'],
         library_sort:            'newest',
         my_tab_search:           '',
-        my_tab_tags:             [],
+        my_tab_categories:       [],
       })
     )
   );
@@ -309,7 +322,7 @@ export async function buildExport(scope = 'my') {
     : templates.filter(t => t.library_id === null);
 
   const envelope = {
-    export_version: 1,
+    export_version: 2,
     exported_at:    new Date().toISOString(),
     scope,
     templates:      exported,
@@ -319,7 +332,27 @@ export async function buildExport(scope = 'my') {
     envelope.libraries = await getLibraries();
   }
 
+  // Generate SHA-256 integrity hash
+  const payloadStr = JSON.stringify({ templates: envelope.templates, libraries: envelope.libraries || [] });
+  const hashBuffer = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(payloadStr));
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  envelope.integrity_hash = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+
   return envelope;
+}
+
+export async function verifyExportIntegrity(envelope) {
+  if (!envelope) return true;
+  if (envelope.export_version >= 2) {
+    if (!envelope.integrity_hash) return false; // Reject missing hash on modern schemas
+  } else {
+    if (!envelope.integrity_hash) return true; // Allow legacy to bypass
+  }
+  const payloadStr = JSON.stringify({ templates: envelope.templates || [], libraries: envelope.libraries || [] });
+  const hashBuffer = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(payloadStr));
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  const expected = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+  return expected === envelope.integrity_hash;
 }
 
 /**
